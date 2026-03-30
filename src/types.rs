@@ -154,7 +154,7 @@ impl Facility {
         }
     }
 
-    /// Guesses the [`Facility`] from a callsign suffix (e.g. `"EGLL_TWR"` -> [`Facility::Tower`]).
+    /// Guesses the [`Facility`] from a callsign suffix (e.g. `"LOWW_TWR"` -> [`Facility::Tower`]).
     ///
     /// Returns [`Facility::Observer`] if the suffix is not recognized.
     #[must_use]

@@ -184,10 +184,10 @@ mod tests {
 
     #[test]
     fn parse_pilot_line() {
-        let line = "1234567,BAW123,pilot,,,51.148056,-0.190278,0,0,0,0,";
+        let line = "1234567,AUA456,pilot,,,48.11028,16.56972,0,0,0,0,";
         let conn: UserConnection = line.parse().unwrap();
         assert_eq!(conn.cid, CertificateId::new(1_234_567));
-        assert_eq!(conn.callsign, "BAW123");
+        assert_eq!(conn.callsign, "AUA456");
         assert_eq!(conn.facility_type, SlurperFacilityType::Pilot);
         assert_eq!(conn.frequency, None);
         assert_eq!(conn.visual_range, None);
@@ -196,55 +196,56 @@ mod tests {
 
     #[test]
     fn parse_atc_line() {
-        let line = "1234567,EGLL_TWR,atc,118.500,50,51.4775,-0.461389,";
+        let line = "1234567,LOWW_TWR,atc,119.400,50,48.11028,16.56972,";
         let conn: UserConnection = line.parse().unwrap();
-        assert_eq!(conn.callsign, "EGLL_TWR");
+        assert_eq!(conn.callsign, "LOWW_TWR");
         assert_eq!(conn.facility_type, SlurperFacilityType::Atc);
-        assert_eq!(conn.frequency.as_deref(), Some("118.500"));
+        assert_eq!(conn.frequency.as_deref(), Some("119.400"));
         assert_eq!(conn.visual_range, Some(50));
         assert!(conn.secondary_positions.is_empty());
     }
 
     #[test]
     fn parse_atc_with_secondary_positions() {
-        let line = "1234567,EGLL_APP,atc,119.725,100,51.4775,-0.461389,51.15,-0.18,52.0,0.5,";
+        let line =
+            "1234567,LOWW_APP,atc,134.675,100,48.11028,16.56972,47.7933,13.0043,46.9911,15.4396,";
         let conn: UserConnection = line.parse().unwrap();
         assert_eq!(conn.secondary_positions.len(), 2);
-        assert!((conn.secondary_positions[0].0 - 51.15).abs() < f64::EPSILON);
-        assert!((conn.secondary_positions[1].1 - 0.5).abs() < f64::EPSILON);
+        assert!((conn.secondary_positions[0].0 - 47.7933).abs() < f64::EPSILON);
+        assert!((conn.secondary_positions[1].1 - 15.4396).abs() < f64::EPSILON);
     }
 
     #[test]
     fn parse_strips_zero_padding_pairs() {
-        let line = "1234567,EGLL_APP,atc,119.725,100,51.4775,-0.461389,51.15,-0.18,0,0,0,0,";
+        let line = "1234567,LOWW_APP,atc,134.675,100,48.11028,16.56972,47.7933,13.0043,0,0,0,0,";
         let conn: UserConnection = line.parse().unwrap();
         assert_eq!(conn.secondary_positions.len(), 1);
     }
 
     #[test]
     fn parse_too_few_fields() {
-        let line = "1234567,BAW123,pilot,,,51.1";
+        let line = "1234567,AUA456,pilot,,,48.1";
         let err = line.parse::<UserConnection>().unwrap_err();
         assert!(matches!(err, ParseError::InvalidSlurperCsv { .. }));
     }
 
     #[test]
     fn parse_invalid_cid() {
-        let line = "not_a_number,BAW123,pilot,,,51.1,-0.19,";
+        let line = "not_a_number,AUA456,pilot,,,48.11,16.57,";
         let err = line.parse::<UserConnection>().unwrap_err();
         assert!(matches!(err, ParseError::InvalidSlurperCsv { .. }));
     }
 
     #[test]
     fn parse_empty_callsign() {
-        let line = "1234567,,pilot,,,51.1,-0.19,";
+        let line = "1234567,,pilot,,,48.11,16.57,";
         let err = line.parse::<UserConnection>().unwrap_err();
         assert!(matches!(err, ParseError::InvalidSlurperCsv { .. }));
     }
 
     #[test]
     fn parse_unknown_facility_type() {
-        let line = "1234567,BAW123,observer,,,51.1,-0.19,";
+        let line = "1234567,AUA456,observer,,,48.11,16.57,";
         let err = line.parse::<UserConnection>().unwrap_err();
         assert!(matches!(err, ParseError::InvalidSlurperCsv { .. }));
     }
@@ -274,11 +275,11 @@ mod tests {
 
     #[test]
     fn parse_facility_type_case_insensitive() {
-        let line = "1234567,EGLL_TWR,ATC,118.500,50,51.4775,-0.461389,";
+        let line = "1234567,LOWW_TWR,ATC,119.400,50,48.11028,16.56972,";
         let conn: UserConnection = line.parse().unwrap();
         assert_eq!(conn.facility_type, SlurperFacilityType::Atc);
 
-        let line = "1234567,BAW123,Pilot,,,51.1,-0.19,";
+        let line = "1234567,AUA456,Pilot,,,48.11,16.57,";
         let conn: UserConnection = line.parse().unwrap();
         assert_eq!(conn.facility_type, SlurperFacilityType::Pilot);
     }
@@ -287,7 +288,7 @@ mod tests {
     fn parse_realistic_multi_entry_response() {
         let response = "\
             1234567,LOWW_D_ATIS,atc,121.730,0,48.11028,16.56972,0,0,0,0,0,0,0,0,\n\
-            1234567,LOVV_CTR,atc,123.450,600,47.66667,14.33333,0,0,0,0,0,0,0,0,\n\
+            1234567,LOVV_CTR,atc,132.600,600,47.66667,14.33333,0,0,0,0,0,0,0,0,\n\
             1234567,LOWW_A_ATIS,atc,122.955,0,48.11028,16.56972,0,0,0,0,0,0,0,0,\n";
 
         let connections: Vec<UserConnection> = response
@@ -314,18 +315,18 @@ mod tests {
 
     #[test]
     fn parse_multiple_trailing_commas() {
-        let line = "1234567,BAW123,pilot,,,51.148056,-0.190278,0,0,0,0,,,,";
+        let line = "1234567,AUA456,pilot,,,48.11028,16.56972,0,0,0,0,,,,";
         let conn: UserConnection = line.parse().unwrap();
-        assert_eq!(conn.callsign, "BAW123");
+        assert_eq!(conn.callsign, "AUA456");
         assert!(conn.secondary_positions.is_empty());
     }
 
     #[test]
     fn parse_minimal_valid_line_no_trailing_comma() {
-        let line = "1234567,EGLL_TWR,atc,118.500,50,51.4775,-0.461389";
+        let line = "1234567,LOWW_TWR,atc,119.400,50,48.11028,16.56972";
         let conn: UserConnection = line.parse().unwrap();
-        assert_eq!(conn.callsign, "EGLL_TWR");
-        assert_eq!(conn.frequency.as_deref(), Some("118.500"));
+        assert_eq!(conn.callsign, "LOWW_TWR");
+        assert_eq!(conn.frequency.as_deref(), Some("119.400"));
     }
 
     #[test]
@@ -338,14 +339,14 @@ mod tests {
 
     #[test]
     fn parse_odd_trailing_field_ignored() {
-        let line = "1234567,EGLL_TWR,atc,118.500,50,51.4775,-0.461389,42.0,";
+        let line = "1234567,LOWW_TWR,atc,119.400,50,48.11028,16.56972,42.0,";
         let conn: UserConnection = line.parse().unwrap();
         assert!(conn.secondary_positions.is_empty());
     }
 
     #[test]
     fn parse_secondary_positions_with_negative_coords() {
-        let line = "1234567,EGLL_APP,atc,119.725,100,51.4775,-0.461389,-33.86,151.21,51.15,-0.18,";
+        let line = "1234567,LOWW_APP,atc,134.675,100,48.11028,16.56972,-33.86,151.21,-47.26,11.34,";
         let conn: UserConnection = line.parse().unwrap();
         assert_eq!(conn.secondary_positions.len(), 2);
         assert!((conn.secondary_positions[0].0 - (-33.86)).abs() < f64::EPSILON);

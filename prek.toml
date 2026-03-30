@@ -1,0 +1,48 @@
+exclude = { glob = ["target/**", "frontend-dist/**"] }
+
+# Built-in hygiene hooks (fast, offline, parallel at default priority)
+[[repos]]
+repo = "builtin"
+hooks = [
+    { id = "trailing-whitespace" },
+    { id = "end-of-file-fixer" },
+    { id = "check-toml" },
+    { id = "check-yaml" },
+    { id = "check-json" },
+    { id = "check-merge-conflict" },
+    { id = "check-added-large-files" },
+    { id = "detect-private-key" },
+    { id = "check-case-conflict" },
+]
+
+# Rust validation hooks
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "cargo-fmt"
+name = "cargo fmt --check"
+language = "system"
+entry = "cargo fmt -- --check"
+types = ["rust"]
+pass_filenames = false
+priority = 10
+
+[[repos.hooks]]
+id = "cargo-clippy"
+name = "cargo clippy"
+language = "system"
+entry = "cargo clippy --all-features -- -D warnings"
+types = ["rust"]
+pass_filenames = false
+priority = 20
+
+[[repos.hooks]]
+id = "cargo-doc"
+name = "cargo doc"
+language = "system"
+entry = "cargo doc --all-features --no-deps"
+env = { RUSTDOCFLAGS = "-D warnings" }
+types = ["rust"]
+pass_filenames = false
+priority = 20

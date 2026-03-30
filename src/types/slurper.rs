@@ -165,6 +165,32 @@ impl UserConnection {
             secondary_positions,
         })
     }
+
+    /// Formats this connection as a single CSV line in the slurper response format.
+    ///
+    /// The output uses the same field order as the real API:
+    /// `CID,Callsign,FacilityType,Frequency,VisualRange,Lat,Lon[,SecLat,SecLon,...],`
+    #[cfg(feature = "mock")]
+    #[must_use]
+    pub fn to_csv_line(&self) -> String {
+        use std::fmt::Write;
+
+        let mut line = format!(
+            "{},{},{},{},{},{},{}",
+            self.cid,
+            self.callsign,
+            self.facility_type,
+            self.frequency.as_deref().unwrap_or(""),
+            self.visual_range.map_or(String::new(), |v| v.to_string()),
+            self.latitude,
+            self.longitude,
+        );
+        for &(lat, lon) in &self.secondary_positions {
+            write!(line, ",{lat},{lon}").unwrap();
+        }
+        line.push(',');
+        line
+    }
 }
 
 /// Returns `Some(trimmed)` if the field is non-empty after trimming,

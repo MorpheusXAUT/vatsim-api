@@ -58,3 +58,6 @@ pub use client::{CachePolicy, ClientConfig, VatsimClient};
 
 #[cfg(feature = "client")]
 pub use error::ClientError;
+
+#[cfg(feature = "mock")]
+pub use mock::{MockServer, MockServerBuilder, MockServerHandle};

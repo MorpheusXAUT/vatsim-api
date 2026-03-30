@@ -15,9 +15,22 @@ readme = "README.md"
 default = ["chrono", "serde"]
 chrono = ["dep:chrono"]
 client = ["serde", "dep:reqwest", "dep:serde_json", "dep:tokio"]
-mock = ["serde", "dep:axum", "dep:rust-embed", "dep:serde_json", "dep:tokio", "dep:tower-http"]
+mock = [
+    "chrono",
+    "serde",
+    "dep:axum",
+    "dep:rust-embed",
+    "dep:serde_json",
+    "dep:tokio",
+    "dep:tower-http",
+]
+mock-bin = ["mock", "tokio/rt-multi-thread", "tokio/macros"]
 serde = ["chrono?/serde", "dep:serde"]
 tracing = ["axum?/tracing", "tower-http?/trace", "dep:tracing"]
+
+[[bin]]
+name = "vatsim-mock"
+required-features = ["mock-bin"]
 
 [dependencies]
 thiserror = "2"
@@ -28,8 +41,17 @@ reqwest = { version = "0.13", features = ["json", "query"], optional = true }
 rust-embed = { version = "8", optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
-tokio = { version = "1", features = ["rt", "time", "sync"], optional = true }
-tower-http = { version = "0.6", features = ["fs", "cors"], optional = true }
+tokio = { version = "1", features = [
+    "rt",
+    "time",
+    "sync",
+    "net",
+], optional = true }
+tower-http = { version = "0.6", features = [
+    "cors",
+    "fs",
+    "set-header",
+], optional = true }
 tracing = { version = "0.1", optional = true }
 
 [dev-dependencies]

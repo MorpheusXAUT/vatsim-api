@@ -1,0 +1,51 @@
+//! Route definitions for the mock VATSIM server.
+
+mod api;
+mod datafeed;
+mod slurper;
+
+use axum::Router;
+use axum::http::HeaderValue;
+use axum::http::header::{REFERRER_POLICY, X_CONTENT_TYPE_OPTIONS, X_FRAME_OPTIONS};
+use tower_http::cors::CorsLayer;
+use tower_http::set_header::SetResponseHeaderLayer;
+
+use super::state::SharedState;
+
+/// Builds the complete [`axum::Router`] for the mock server.
+///
+/// The router exposes:
+/// - VATSIM-compatible endpoints (`/v3/vatsim-data.json`, `/users/info`)
+/// - Management CRUD API under `/api/`
+///
+/// When `security_headers` is `true`, all responses include permissive CORS
+/// headers and standard security headers (`X-Content-Type-Options`,
+/// `X-Frame-Options`, `Referrer-Policy`).
+pub fn router(state: SharedState, security_headers: bool) -> Router {
+    let router = Router::new()
+        .merge(datafeed::routes())
+        .merge(slurper::routes())
+        .merge(api::routes());
+    // TODO wire in embedded frontend static file serving
+
+    let router = if security_headers {
+        router
+            .layer(CorsLayer::permissive())
+            .layer(SetResponseHeaderLayer::overriding(
+                X_CONTENT_TYPE_OPTIONS,
+                HeaderValue::from_static("nosniff"),
+            ))
+            .layer(SetResponseHeaderLayer::overriding(
+                X_FRAME_OPTIONS,
+                HeaderValue::from_static("SAMEORIGIN"),
+            ))
+            .layer(SetResponseHeaderLayer::overriding(
+                REFERRER_POLICY,
+                HeaderValue::from_static("strict-origin-when-cross-origin"),
+            ))
+    } else {
+        router
+    };
+
+    router.with_state(state)
+}

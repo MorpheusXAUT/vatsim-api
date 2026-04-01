@@ -209,7 +209,7 @@ pub enum FlightRules {
 pub struct FacilityInfo {
     pub id: i8,
     pub short: String,
-    pub long_name: String,
+    pub long: String,
 }
 
 /// Human-readable metadata for a controller rating, as returned in the datafeed
@@ -217,8 +217,8 @@ pub struct FacilityInfo {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct RatingInfo {
     pub id: i8,
-    pub short_name: String,
-    pub long_name: String,
+    pub short: String,
+    pub long: String,
 }
 
 /// Human-readable metadata for a pilot rating, as returned in the datafeed

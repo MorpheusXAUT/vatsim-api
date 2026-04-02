@@ -1,6 +1,7 @@
 //! Route definitions for the mock VATSIM server.
 
 mod api;
+mod connect;
 mod datafeed;
 mod slurper;
 
@@ -16,6 +17,7 @@ use super::state::SharedState;
 ///
 /// The router exposes:
 /// - VATSIM-compatible endpoints (`/v3/vatsim-data.json`, `/users/info`)
+/// - Connect OAuth endpoints (`/oauth/authorize`, `/oauth/token`, `/api/user`)
 /// - Management CRUD API under `/api/`
 ///
 /// When `security_headers` is `true`, all responses include permissive CORS
@@ -25,6 +27,7 @@ pub fn router(state: SharedState, security_headers: bool) -> Router {
     let router = Router::new()
         .merge(datafeed::routes())
         .merge(slurper::routes())
+        .merge(connect::routes())
         .merge(api::routes());
     // TODO wire in embedded frontend static file serving
 

@@ -5,6 +5,7 @@
 //! [`PilotRating`], and [`MilitaryRating`]. Endpoint-specific structs live in
 //! the [`datafeed`] and [`slurper`] submodules.
 
+pub mod connect;
 pub mod datafeed;
 pub mod slurper;
 
@@ -14,7 +15,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 /// A VATSIM user's certificate ID (CID), a unique numeric identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 #[repr(transparent)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
 pub struct CertificateId(u32);
 
@@ -117,6 +118,37 @@ impl From<u32> for CertificateId {
 impl From<CertificateId> for u32 {
     fn from(id: CertificateId) -> Self {
         id.0
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for CertificateId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Clone, Copy)]
+        struct CertificateIdVisitor;
+        impl serde::de::Visitor<'_> for CertificateIdVisitor {
+            type Value = CertificateId;
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a CID as a string or integer")
+            }
+            fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<CertificateId, E> {
+                u32::try_from(v)
+                    .map(CertificateId::new)
+                    .map_err(|_| E::invalid_value(serde::de::Unexpected::Signed(v), &self))
+            }
+            fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<CertificateId, E> {
+                u32::try_from(v)
+                    .map(CertificateId::new)
+                    .map_err(|_| E::invalid_value(serde::de::Unexpected::Unsigned(v), &self))
+            }
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<CertificateId, E> {
+                v.parse().map_err(E::custom)
+            }
+        }
+        deserializer.deserialize_any(CertificateIdVisitor)
     }
 }
 

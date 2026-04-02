@@ -197,6 +197,13 @@ impl MockServerBuilder {
         self
     }
 
+    /// Pre-populates the server with Connect users for OAuth authentication.
+    #[must_use]
+    pub fn users(mut self, users: Vec<crate::types::connect::ConnectUser>) -> Self {
+        self.state.users = users;
+        self
+    }
+
     /// Enables CORS and security response headers.
     ///
     /// When enabled, every response includes:

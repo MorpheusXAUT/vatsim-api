@@ -1,11 +1,13 @@
 //! Mutable state for the mock VATSIM server.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 use crate::types::CertificateId;
+use crate::types::connect::ConnectUser;
 use crate::types::datafeed::{
     Atis, Controller, DataFeed, FacilityInfo, GeneralInfo, MilitaryRatingInfo, Pilot,
     PilotRatingInfo, Prefile, RatingInfo, Server,
@@ -28,6 +30,17 @@ pub struct MockState {
     pub ratings: Vec<RatingInfo>,
     pub pilot_ratings: Vec<PilotRatingInfo>,
     pub military_ratings: Vec<MilitaryRatingInfo>,
+    /// Connect users available for OAuth authentication.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub users: Vec<ConnectUser>,
+    /// Pending authorization codes mapped to the CID they authenticate.
+    /// Populated by `GET /oauth/authorize`, consumed by `POST /oauth/token`.
+    #[serde(skip)]
+    pub(crate) auth_codes: HashMap<String, CertificateId>,
+    /// Active access tokens mapped to the CID they belong to.
+    /// Populated by `POST /oauth/token`, looked up by `GET /api/user`.
+    #[serde(skip)]
+    pub(crate) access_tokens: HashMap<String, CertificateId>,
     /// Seed snapshot for resetting the state. Not serialized.
     /// `Box` is required because the type is recursive.
     #[serde(skip)]
@@ -72,7 +85,10 @@ impl MockState {
             self.ratings.clear();
             self.pilot_ratings.clear();
             self.military_ratings.clear();
+            self.users.clear();
         }
+        self.auth_codes.clear();
+        self.access_tokens.clear();
     }
 
     /// Returns a [`GeneralInfo`] derived from the current state.
@@ -136,6 +152,12 @@ impl MockState {
         self.servers.iter().find(|s| s.ident == ident)
     }
 
+    /// Returns the Connect user with the given CID, if any.
+    #[must_use]
+    pub fn user(&self, cid: CertificateId) -> Option<&ConnectUser> {
+        self.users.iter().find(|u| u.cid == cid)
+    }
+
     /// Removes a pilot by CID. Returns `true` if one was removed.
     pub fn remove_pilot(&mut self, cid: CertificateId) -> bool {
         let before = self.pilots.len();
@@ -171,6 +193,13 @@ impl MockState {
         let before = self.servers.len();
         self.servers.retain(|s| s.ident != ident);
         self.servers.len() != before
+    }
+
+    /// Removes a Connect user by CID. Returns `true` if one was removed.
+    pub fn remove_user(&mut self, cid: CertificateId) -> bool {
+        let before = self.users.len();
+        self.users.retain(|u| u.cid != cid);
+        self.users.len() != before
     }
 
     /// Inserts or replaces a pilot (matched by CID).
@@ -221,6 +250,15 @@ impl MockState {
             self.servers.push(server);
         }
     }
+
+    /// Inserts or replaces a Connect user (matched by CID).
+    pub fn upsert_user(&mut self, user: ConnectUser) {
+        if let Some(existing) = self.users.iter_mut().find(|u| u.cid == user.cid) {
+            *existing = user;
+        } else {
+            self.users.push(user);
+        }
+    }
 }
 
 impl From<DataFeed> for MockState {
@@ -235,6 +273,9 @@ impl From<DataFeed> for MockState {
             ratings: feed.ratings,
             pilot_ratings: feed.pilot_ratings,
             military_ratings: feed.military_ratings,
+            users: Vec::new(),
+            auth_codes: HashMap::new(),
+            access_tokens: HashMap::new(),
             seed: None,
         }
     }

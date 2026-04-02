@@ -1,6 +1,3 @@
-// Route handlers are not user-facing Rust API; error semantics are HTTP status codes.
-#![allow(clippy::missing_errors_doc)]
-
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
@@ -8,6 +5,7 @@ use axum::{Json, Router};
 
 use crate::mock::state::{MockState, SharedState};
 use crate::types::CertificateId;
+use crate::types::connect::ConnectUser;
 use crate::types::datafeed::{Atis, Controller, Pilot, Prefile, Server};
 
 type ApiResult<T> = Result<Json<T>, StatusCode>;
@@ -46,6 +44,11 @@ pub fn routes() -> Router<SharedState> {
         .route(
             "/api/servers/{ident}",
             get(get_server).put(put_server).delete(delete_server),
+        )
+        .route("/api/users", get(list_users).post(upsert_user))
+        .route(
+            "/api/users/{cid}",
+            get(get_user_by_cid).put(put_user).delete(delete_user),
         )
 }
 
@@ -296,6 +299,52 @@ async fn delete_server(
 ) -> StatusCodeResult {
     let mut state = state.write().await;
     if state.remove_server(&ident) {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
+}
+
+async fn list_users(State(state): State<SharedState>) -> ApiResult<Vec<ConnectUser>> {
+    let state = state.read().await;
+    Ok(Json(state.users.clone()))
+}
+
+async fn get_user_by_cid(
+    State(state): State<SharedState>,
+    Path(cid): Path<u32>,
+) -> ApiResult<ConnectUser> {
+    let state = state.read().await;
+    state
+        .user(CertificateId::new(cid))
+        .cloned()
+        .map(Json)
+        .ok_or(StatusCode::NOT_FOUND)
+}
+
+async fn upsert_user(
+    State(state): State<SharedState>,
+    Json(user): Json<ConnectUser>,
+) -> StatusCodeResult {
+    let mut state = state.write().await;
+    state.upsert_user(user);
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn put_user(
+    State(state): State<SharedState>,
+    Path(cid): Path<u32>,
+    Json(mut user): Json<ConnectUser>,
+) -> StatusCodeResult {
+    user.cid = CertificateId::new(cid);
+    let mut state = state.write().await;
+    state.upsert_user(user);
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn delete_user(State(state): State<SharedState>, Path(cid): Path<u32>) -> StatusCodeResult {
+    let mut state = state.write().await;
+    if state.remove_user(CertificateId::new(cid)) {
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(StatusCode::NOT_FOUND)

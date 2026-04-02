@@ -3,6 +3,10 @@
 use vatsim_api::CachePolicy;
 use vatsim_api::mock::MockServer;
 use vatsim_api::mock::state::MockState;
+use vatsim_api::types::connect::{
+    ConnectRatingInfo, ConnectUser, ConnectUserResponse, NamedInfo, OAuthInfo, PersonalDetails,
+    TokenResponse, VatsimDetails,
+};
 use vatsim_api::types::datafeed::{
     Atis, Controller, DataFeed, FlightPlan, FlightRules, Pilot, Prefile, Server,
 };
@@ -696,4 +700,413 @@ async fn general_info_counts_unique_users() {
     let info = state.general_info();
     assert_eq!(info.connected_clients, 2);
     assert_eq!(info.unique_users, 1);
+}
+
+fn test_user(cid: u32, first: &str, last: &str) -> ConnectUser {
+    ConnectUser {
+        cid: CertificateId::new(cid),
+        personal: PersonalDetails {
+            name_first: first.to_owned(),
+            name_last: last.to_owned(),
+            name_full: format!("{first} {last}"),
+            email: Some(format!(
+                "{}.{}@example.com",
+                first.to_lowercase(),
+                last.to_lowercase()
+            )),
+            country: None,
+        },
+        vatsim: VatsimDetails {
+            rating: ConnectRatingInfo {
+                id: 5,
+                short: "C1".to_owned(),
+                long: "Enroute Controller".to_owned(),
+            },
+            pilotrating: ConnectRatingInfo {
+                id: 0,
+                short: "NEW".to_owned(),
+                long: "Basic Member".to_owned(),
+            },
+            region: NamedInfo {
+                id: Some("EMEA".to_owned()),
+                name: Some("Europe, Middle East and Africa".to_owned()),
+            },
+            division: NamedInfo {
+                id: Some("EUD".to_owned()),
+                name: Some("Europe (except UK)".to_owned()),
+            },
+            subdivision: None,
+        },
+        oauth: OAuthInfo {
+            token_valid: "true".to_owned(),
+        },
+    }
+}
+
+#[tokio::test]
+async fn oauth_full_flow() {
+    let user = test_user(1_234_567, "Kennedy", "Steve");
+    let handle = MockServer::builder()
+        .users(vec![user.clone()])
+        .spawn()
+        .await;
+    let base = handle.base_url();
+    let http = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+
+    // Step 1: Authorize - should redirect with code and state
+    let resp = http
+        .get(format!("{base}/oauth/authorize"))
+        .query(&[
+            ("response_type", "code"),
+            ("client_id", "123"),
+            ("redirect_uri", "https://example.com/callback"),
+            ("state", "csrf_token_123"),
+        ])
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        resp.status().is_redirection(),
+        "expected 302, got {}",
+        resp.status()
+    );
+    let location = resp.headers().get("location").unwrap().to_str().unwrap();
+    assert!(location.starts_with("https://example.com/callback?"));
+    assert!(location.contains("state=csrf_token_123"));
+
+    // Extract the code from the redirect URL
+    let url = reqwest::Url::parse(location).unwrap();
+    let code = url
+        .query_pairs()
+        .find(|(k, _)| k == "code")
+        .unwrap()
+        .1
+        .to_string();
+    assert!(!code.is_empty());
+
+    // Step 2: Exchange code for token
+    let token_resp: TokenResponse = http
+        .post(format!("{base}/oauth/token"))
+        .form(&[
+            ("grant_type", "authorization_code"),
+            ("client_id", "123"),
+            ("client_secret", "secret"),
+            ("redirect_uri", "https://example.com/callback"),
+            ("code", &code),
+        ])
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(token_resp.token_type, "Bearer");
+    assert_eq!(token_resp.expires_in, 604_800);
+    assert!(!token_resp.access_token.is_empty());
+    assert!(!token_resp.refresh_token.is_empty());
+
+    // Step 3: Get user details with the access token
+    let user_resp: ConnectUserResponse = http
+        .get(format!("{base}/api/user"))
+        .bearer_auth(&token_resp.access_token)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(user_resp.data.cid, CertificateId::new(1_234_567));
+    assert_eq!(user_resp.data.personal.name_first, "Kennedy");
+    assert_eq!(user_resp.data.personal.name_last, "Steve");
+    assert_eq!(user_resp.data.vatsim.rating.id, 5);
+
+    handle.shutdown().await;
+}
+
+#[tokio::test]
+async fn oauth_authorize_no_users_returns_error() {
+    let handle = MockServer::builder().spawn().await;
+    let http = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+
+    let resp = http
+        .get(format!("{}/oauth/authorize", handle.base_url()))
+        .query(&[
+            ("response_type", "code"),
+            ("client_id", "123"),
+            ("redirect_uri", "https://example.com/callback"),
+        ])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+
+    handle.shutdown().await;
+}
+
+#[tokio::test]
+async fn oauth_token_invalid_code_returns_error() {
+    let handle = MockServer::builder()
+        .users(vec![test_user(1_000_001, "Test", "User")])
+        .spawn()
+        .await;
+    let http = reqwest::Client::new();
+
+    let resp = http
+        .post(format!("{}/oauth/token", handle.base_url()))
+        .form(&[
+            ("grant_type", "authorization_code"),
+            ("client_id", "123"),
+            ("client_secret", "secret"),
+            ("code", "invalid_code"),
+        ])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+
+    handle.shutdown().await;
+}
+
+#[tokio::test]
+async fn oauth_user_no_token_returns_unauthorized() {
+    let handle = MockServer::builder()
+        .users(vec![test_user(1_000_001, "Test", "User")])
+        .spawn()
+        .await;
+    let http = reqwest::Client::new();
+
+    let resp = http
+        .get(format!("{}/api/user", handle.base_url()))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 401);
+
+    handle.shutdown().await;
+}
+
+#[tokio::test]
+async fn oauth_user_invalid_token_returns_unauthorized() {
+    let handle = MockServer::builder()
+        .users(vec![test_user(1_000_001, "Test", "User")])
+        .spawn()
+        .await;
+    let http = reqwest::Client::new();
+
+    let resp = http
+        .get(format!("{}/api/user", handle.base_url()))
+        .bearer_auth("invalid_token")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 401);
+
+    handle.shutdown().await;
+}
+
+#[tokio::test]
+async fn oauth_code_cannot_be_reused() {
+    let handle = MockServer::builder()
+        .users(vec![test_user(1_000_001, "Test", "User")])
+        .spawn()
+        .await;
+    let base = handle.base_url();
+    let http = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+
+    // Get an auth code
+    let resp = http
+        .get(format!("{base}/oauth/authorize"))
+        .query(&[
+            ("response_type", "code"),
+            ("client_id", "123"),
+            ("redirect_uri", "https://example.com/cb"),
+        ])
+        .send()
+        .await
+        .unwrap();
+    let location = resp.headers().get("location").unwrap().to_str().unwrap();
+    let url = reqwest::Url::parse(location).unwrap();
+    let code = url
+        .query_pairs()
+        .find(|(k, _)| k == "code")
+        .unwrap()
+        .1
+        .to_string();
+
+    // First use succeeds
+    let resp = http
+        .post(format!("{base}/oauth/token"))
+        .form(&[
+            ("grant_type", "authorization_code"),
+            ("client_id", "123"),
+            ("client_secret", "s"),
+            ("code", &code),
+        ])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    // Second use fails
+    let resp = http
+        .post(format!("{base}/oauth/token"))
+        .form(&[
+            ("grant_type", "authorization_code"),
+            ("client_id", "123"),
+            ("client_secret", "s"),
+            ("code", &code),
+        ])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+
+    handle.shutdown().await;
+}
+
+#[tokio::test]
+async fn api_user_crud() {
+    let user = test_user(1_000_001, "Test", "User");
+    let handle = MockServer::builder().spawn().await;
+    let base = handle.base_url();
+    let http = reqwest::Client::new();
+
+    // Empty initially
+    let users: Vec<ConnectUser> = http
+        .get(format!("{base}/api/users"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(users.is_empty());
+
+    // Create via POST
+    http.post(format!("{base}/api/users"))
+        .json(&user)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
+
+    // Read back
+    let fetched: ConnectUser = http
+        .get(format!("{base}/api/users/1000001"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(fetched.cid, CertificateId::new(1_000_001));
+    assert_eq!(fetched.personal.name_first, "Test");
+
+    // Delete
+    http.delete(format!("{base}/api/users/1000001"))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
+
+    // Verify gone
+    let resp = http
+        .get(format!("{base}/api/users/1000001"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 404);
+
+    handle.shutdown().await;
+}
+
+#[tokio::test]
+async fn reset_clears_oauth_tokens() {
+    let handle = MockServer::builder()
+        .users(vec![test_user(1_000_001, "Test", "User")])
+        .spawn()
+        .await;
+    let base = handle.base_url();
+    let http = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+
+    // Complete an OAuth flow to get a token
+    let resp = http
+        .get(format!("{base}/oauth/authorize"))
+        .query(&[
+            ("response_type", "code"),
+            ("client_id", "123"),
+            ("redirect_uri", "https://example.com/cb"),
+        ])
+        .send()
+        .await
+        .unwrap();
+    let location = resp.headers().get("location").unwrap().to_str().unwrap();
+    let url = reqwest::Url::parse(location).unwrap();
+    let code = url
+        .query_pairs()
+        .find(|(k, _)| k == "code")
+        .unwrap()
+        .1
+        .to_string();
+
+    let token_resp: TokenResponse = http
+        .post(format!("{base}/oauth/token"))
+        .form(&[
+            ("grant_type", "authorization_code"),
+            ("client_id", "123"),
+            ("client_secret", "s"),
+            ("code", &code),
+        ])
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    // Token works before reset
+    let resp = http
+        .get(format!("{base}/api/user"))
+        .bearer_auth(&token_resp.access_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    // Reset
+    http.post(format!("{base}/api/reset"))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
+
+    // Token no longer works after reset
+    let resp = http
+        .get(format!("{base}/api/user"))
+        .bearer_auth(&token_resp.access_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 401);
+
+    handle.shutdown().await;
 }

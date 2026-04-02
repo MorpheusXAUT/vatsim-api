@@ -3,7 +3,7 @@ use std::fs;
 use std::process;
 
 use vatsim_api::mock::MockServer;
-use vatsim_api::types::datafeed::DataFeed;
+use vatsim_api::mock::state::MockState;
 
 #[tokio::main]
 async fn main() {
@@ -52,14 +52,15 @@ async fn main() {
             eprintln!("Error reading seed file {path}: {e}");
             process::exit(1);
         });
-        let feed: DataFeed = serde_json::from_str(&data).unwrap_or_else(|e| {
+        let state: MockState = serde_json::from_str(&data).unwrap_or_else(|e| {
             eprintln!("Error parsing seed file {path}: {e}");
             process::exit(1);
         });
         let entity_count =
-            feed.pilots.len() + feed.controllers.len() + feed.atis.len() + feed.prefiles.len();
-        eprintln!("Loaded seed from {path} ({entity_count} entities)");
-        builder = builder.seed(feed);
+            state.pilots.len() + state.controllers.len() + state.atis.len() + state.prefiles.len();
+        let user_count = state.users.len();
+        eprintln!("Loaded seed from {path} ({entity_count} entities, {user_count} users)");
+        builder = builder.state(state);
     }
 
     let server = builder.build().await;

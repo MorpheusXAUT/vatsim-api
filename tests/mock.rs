@@ -978,6 +978,102 @@ async fn oauth_code_cannot_be_reused() {
 }
 
 #[tokio::test]
+async fn oauth_login_hint_selects_user() {
+    let user_a = test_user(1_000_001, "Alpha", "User");
+    let user_b = test_user(1_000_002, "Bravo", "User");
+    let handle = MockServer::builder()
+        .users(vec![user_a, user_b])
+        .spawn()
+        .await;
+    let base = handle.base_url();
+    let http = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+
+    let resp = http
+        .get(format!("{base}/oauth/authorize"))
+        .query(&[
+            ("response_type", "code"),
+            ("client_id", "123"),
+            ("redirect_uri", "https://example.com/cb"),
+            ("login_hint", "1000002"),
+        ])
+        .send()
+        .await
+        .unwrap();
+    assert!(resp.status().is_redirection());
+    let location = resp.headers().get("location").unwrap().to_str().unwrap();
+    let url = reqwest::Url::parse(location).unwrap();
+    let code = url
+        .query_pairs()
+        .find(|(k, _)| k == "code")
+        .unwrap()
+        .1
+        .to_string();
+
+    let token_resp: TokenResponse = http
+        .post(format!("{base}/oauth/token"))
+        .form(&[
+            ("grant_type", "authorization_code"),
+            ("client_id", "123"),
+            ("client_secret", "s"),
+            ("code", &code),
+        ])
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    let user_resp: ConnectUserResponse = http
+        .get(format!("{base}/api/user"))
+        .bearer_auth(&token_resp.access_token)
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(user_resp.data.cid, CertificateId::new(1_000_002));
+    assert_eq!(user_resp.data.personal.name_first, "Bravo");
+
+    handle.shutdown().await;
+}
+
+#[tokio::test]
+async fn oauth_login_hint_unknown_cid_returns_error() {
+    let handle = MockServer::builder()
+        .users(vec![test_user(1_000_001, "Test", "User")])
+        .spawn()
+        .await;
+    let http = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+
+    let resp = http
+        .get(format!("{}/oauth/authorize", handle.base_url()))
+        .query(&[
+            ("response_type", "code"),
+            ("client_id", "123"),
+            ("redirect_uri", "https://example.com/cb"),
+            ("login_hint", "9999999"),
+        ])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+
+    handle.shutdown().await;
+}
+
+#[tokio::test]
 async fn api_user_crud() {
     let user = test_user(1_000_001, "Test", "User");
     let handle = MockServer::builder().spawn().await;

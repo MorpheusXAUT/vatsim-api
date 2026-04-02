@@ -10,6 +10,7 @@ use serde::Deserialize;
 use url::Url;
 
 use crate::mock::state::SharedState;
+use crate::types::CertificateId;
 use crate::types::connect::{ConnectUserResponse, OAuthError, TokenResponse};
 
 pub fn routes() -> Router<SharedState> {
@@ -29,12 +30,21 @@ struct AuthorizeParams {
     #[allow(dead_code)]
     scope: Option<String>,
     state: Option<String>,
+    /// Optional hint indicating which user to authenticate as.
+    ///
+    /// When set, the mock looks up a user by CID instead of always picking
+    /// the first one. While the actual VATSIM Connect API does not support
+    /// this parameter, the mock uses it to select the user.
+    login_hint: Option<String>,
 }
 
 /// `GET /oauth/authorize`
 ///
-/// The mock auto-approves all authorization requests. It picks the first
-/// available user, generates a random authorization code, stores it, and
+/// The mock auto-approves all authorization requests. When `login_hint` is
+/// provided (as a numeric CID string), the mock authenticates as that user.
+/// Otherwise it falls back to the first available user.
+///
+/// The endpoint generates a random authorization code, stores it, and
 /// redirects back to the `redirect_uri` with `code` and `state` parameters.
 async fn authorize(
     State(shared): State<SharedState>,
@@ -42,13 +52,31 @@ async fn authorize(
 ) -> Result<Redirect, (StatusCode, Json<OAuthError>)> {
     let mut state = shared.write().await;
 
-    let cid = state.users.first().map(|u| u.cid).ok_or_else(|| {
-        oauth_error(
-            StatusCode::BAD_REQUEST,
-            "invalid_request",
-            "No users configured in mock server",
-        )
-    })?;
+    let cid = if let Some(hint) = &params.login_hint {
+        let cid: CertificateId = hint.parse().map_err(|_| {
+            oauth_error(
+                StatusCode::BAD_REQUEST,
+                "invalid_request",
+                &format!("Invalid login_hint (expected numeric CID): {hint}"),
+            )
+        })?;
+        if !state.users.iter().any(|u| u.cid == cid) {
+            return Err(oauth_error(
+                StatusCode::BAD_REQUEST,
+                "invalid_request",
+                &format!("No user with CID {cid} configured in mock server"),
+            ));
+        }
+        cid
+    } else {
+        state.users.first().map(|u| u.cid).ok_or_else(|| {
+            oauth_error(
+                StatusCode::BAD_REQUEST,
+                "invalid_request",
+                "No users configured in mock server",
+            )
+        })?
+    };
 
     let code = generate_mock_token("code");
     state.auth_codes.insert(code.clone(), cid);

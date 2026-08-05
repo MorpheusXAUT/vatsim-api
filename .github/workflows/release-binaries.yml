@@ -1,0 +1,250 @@
+name: Release binaries
+
+# Triggered by the tag release-plz pushes. That tag is created with a GitHub App
+# token rather than the default GITHUB_TOKEN, which is what allows it to start
+# this workflow.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and attach binaries to"
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: release-binaries-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  # Pinned rather than `stable`, so rebuilding the same tag produces the same
+  # binary instead of whatever stable happened to be that week. Bump it
+  # deliberately; dependabot does not track this.
+  RELEASE_TOOLCHAIN: "1.97.1"
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: "ubuntu-24.04"
+            target: "x86_64-unknown-linux-gnu"
+          - platform: "windows-latest"
+            target: "x86_64-pc-windows-msvc"
+          - platform: "macos-latest"
+            target: "aarch64-apple-darwin" # for Arm based macs (M1 and above).
+          - platform: "macos-latest"
+            target: "x86_64-apple-darwin" # for Intel based macs.
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+          persist-credentials: false
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install "${RELEASE_TOOLCHAIN}" --profile minimal --no-self-update --target ${{ matrix.target }}
+          rustup default "${RELEASE_TOOLCHAIN}"
+        shell: bash
+
+      # Deliberately uncached. A cache entry written by a pull request run could
+      # otherwise be restored into a release build, and nothing downstream would
+      # notice. Release builds are rare, so paying the full compile is the right
+      # trade, and it also makes rebuilding a tag actually reproducible.
+      - name: Install cargo-auditable
+        run: cargo install --locked cargo-auditable
+
+      # `cargo auditable` embeds the exact dependency tree in the binary, so
+      # `cargo audit bin vatsim-mock` works on an artifact someone downloaded
+      # months later without needing this repository.
+      - name: Build
+        run: |
+          cargo auditable build \
+            --locked \
+            --release \
+            --target ${{ matrix.target }} \
+            --features mock-bin \
+            --bin vatsim-mock
+        shell: bash
+
+      - name: Package
+        id: package
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          name="vatsim-mock-${TARGET}"
+          mkdir -p "dist/${name}"
+          cp README.md LICENSE-APACHE LICENSE-MIT "dist/${name}/"
+
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            cp "target/${TARGET}/release/vatsim-mock.exe" "dist/${name}/"
+            (cd dist && 7z a -tzip "${name}.zip" "${name}")
+            echo "archive=dist/${name}.zip" >> "$GITHUB_OUTPUT"
+          else
+            cp "target/${TARGET}/release/vatsim-mock" "dist/${name}/"
+            (cd dist && tar -czf "${name}.tar.gz" "${name}")
+            echo "archive=dist/${name}.tar.gz" >> "$GITHUB_OUTPUT"
+          fi
+        shell: bash
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          format: spdx-json
+          output-file: sbom.spdx.json
+          upload-release-assets: false
+          artifact-name: sbom-${{ matrix.target }}.spdx.json
+
+      - name: Upload archive
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: archive-${{ matrix.target }}
+          path: ${{ steps.package.outputs.archive }}
+          if-no-files-found: error
+          retention-days: 7
+
+  crate:
+    name: package crate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+          persist-credentials: false
+
+      - name: Rust toolchain
+        run: rustup toolchain install "${RELEASE_TOOLCHAIN}" --profile minimal --no-self-update
+
+      # crates.io does not surface provenance for `.crate` files, so the copy
+      # attached to the GitHub release is the only signed record of what was
+      # published. It is byte-identical to what `cargo publish` uploads.
+      - name: Package crate
+        run: cargo package --locked
+
+      - name: Upload crate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: archive-crate
+          path: target/package/*.crate
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: sign and publish
+    needs: [build, crate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read # write access for the release is via the App token below
+      attestations: write
+      id-token: write
+
+    steps:
+      - name: Download archives
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: dist
+          pattern: archive-*
+          merge-multiple: true
+
+      - name: Generate checksums
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          out="SHA256SUMS.txt"
+          : > "$out"
+          while IFS= read -r -d '' f; do
+            sum=$(shasum -a 256 "$f" | cut -d' ' -f1)
+            echo "$sum  $(basename "$f")" >> "$out"
+          done < <(find . -type f ! -name 'SHA256SUMS*' -print0 | sort -z)
+          cat "$out"
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign checksums using Cosign with GitHub OIDC Token
+        working-directory: dist
+        run: |
+          cosign sign-blob --yes \
+            --bundle "SHA256SUMS.txt.bundle.json" \
+            "SHA256SUMS.txt"
+
+      # One attestation covers every artifact listed in the checksum file.
+      - name: Attest release artifacts
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-checksums: dist/SHA256SUMS.txt
+
+      - name: Generate GitHub token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: generate-token
+        with:
+          client-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          permission-contents: write
+
+      # `gh` ships on the runner, so this needs no third-party action in the
+      # release path.
+      - name: Attach assets to the release
+        env:
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          gh release upload "$TAG" --clobber \
+            dist/*.tar.gz \
+            dist/*.zip \
+            dist/*.crate \
+            dist/SHA256SUMS.txt \
+            dist/SHA256SUMS.txt.bundle.json
+
+          cat >> notes.md <<'EOF'
+
+          ---
+
+          ### Verifying these artifacts
+
+          ```sh
+          gh attest verify <archive> --repo OWNER_REPO
+          sha256sum -c SHA256SUMS.txt --ignore-missing
+          ```
+
+          `SHA256SUMS.txt.bundle.json` is a [cosign](https://github.com/sigstore/cosign) signature over the checksum file, made with this workflow's OIDC identity.
+          EOF
+          sed -i "s|OWNER_REPO|${GH_REPO}|" notes.md
+
+          gh release view "$TAG" --json body --jq .body > existing.md
+          cat existing.md notes.md > combined.md
+          gh release edit "$TAG" --notes-file combined.md
+
+      # release-plz leaves the release as a draft so the assets above could be
+      # attached to it. Publishing is the last step because an immutable
+      # release rejects any asset added after this point.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: gh release edit "$TAG" --draft=false --latest

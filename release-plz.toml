@@ -1,0 +1,86 @@
+[workspace]
+# Only open a release PR when at least one commit since the last release is
+# actually releasable. Without this, skipped changelog commit types (chore, ci,
+# refactor, style, test, build) still trigger a version bump + release PR.
+# Matches the non-skipped groups from [changelog].commit_parsers below, plus any
+# breaking change regardless of its type: a `refactor!:` is skipped as a
+# refactor but must never be skipped as a release.
+release_commits = "^(feat|fix|perf|revert)[(:!]|^\\w+(\\(.+\\))?!:"
+
+# Create the GitHub release as a draft so release-binaries.yml can attach the
+# archives, checksums and signatures to it. Immutable releases reject assets
+# added after publication, so the release is published by that workflow once
+# everything is on it.
+git_release_draft = true
+
+[changelog]
+header = """# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+"""
+
+body = """
+
+{% macro print_commit(commit) -%}
+    - {% if commit.scope %}*({{ commit.scope }})* {% endif %}\
+      {% if commit.breaking %}[**breaking**] {% endif %}\
+      {{ commit.message | upper_first }} - \
+      ([{{ commit.id | truncate(length=7, end="") }}]({{ remote.link }}/commit/{{ commit.id }}))\
+{% endmacro -%}
+
+{% if version %}\
+    {% if previous.version %}\
+        ## [{{ version }}]({{ release_link }})
+    {% else %}\
+        ## [{{ version }}]
+    {% endif %}\
+{% endif %}\
+
+{% for group, commits in commits
+| filter(attribute="merge_commit", value=false)
+| unique(attribute="message")
+| group_by(attribute="group") %}
+    ### {{ group | striptags | trim | upper_first }}
+
+    {% for commit in commits
+    | filter(attribute="scope")
+    | sort(attribute="scope") %}
+        {{ self::print_commit(commit=commit) }}
+    {%- endfor -%}
+    {% raw %}\n{% endraw %}\
+    {%- for commit in commits %}
+        {%- if not commit.scope -%}
+            {{ self::print_commit(commit=commit) }}
+        {% endif -%}
+    {% endfor -%}
+{% endfor %}\n
+"""
+
+commit_parsers = [
+    # Breaking changes are matched first so they are grouped by their impact
+    # rather than their type. Without this a `refactor!:` would be dropped by
+    # the `^refactor` skip rule below and vanish from the changelog.
+    { message = "^\\w+(\\(.+\\))?!:", group = "<!-- 0 -->Breaking changes" },
+    { message = "^feat", group = "<!-- 1 -->Features" },
+    { message = "^fix", group = "<!-- 2 -->Bug Fixes" },
+    { message = "^perf", group = "<!-- 3 -->Performance" },
+    { body = ".*security", group = "<!-- 4 -->Security" },
+    { message = "^revert", group = "<!-- 5 -->Revert" },
+    { message = "^docs?", group = "<!-- 6 -->Documentation" },
+    { message = "^build", skip = true },
+    { message = "^chore", skip = true },
+    { message = "^ci", skip = true },
+    { message = "^refactor", skip = true },
+    { message = "^style", skip = true },
+    { message = "^test", skip = true },
+]
+
+link_parsers = [
+    { pattern = "#(\\d+)", href = "{{ remote.link }}/issues/$1" },
+    { pattern = "RFC(\\d+)", text = "ietf-rfc$1", href = "https://datatracker.ietf.org/doc/html/rfc$1" },
+]

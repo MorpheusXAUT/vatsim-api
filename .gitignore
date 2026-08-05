@@ -142,3 +142,7 @@ target/
 *.pdb
 
 # End of https://www.toptal.com/developers/gitignore/api/rust,jetbrains,linux
+
+# Local scratch seed for manual testing, not a shipped fixture
+/simple.json
+/vatsim-data.json

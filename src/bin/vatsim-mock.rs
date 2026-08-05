@@ -1,81 +1,122 @@
-use std::env;
-use std::fs;
-use std::process;
+//! Standalone mock VATSIM server.
+//!
+//! Serves the data feed, slurper, and Connect OAuth endpoints against in-memory
+//! state, plus a management API for manipulating that state at runtime. See the
+//! `vatsim_api::mock` module documentation for the full endpoint list.
 
+use std::path::PathBuf;
+use std::process::ExitCode;
+
+use clap::Parser;
+use tracing_subscriber::EnvFilter;
 use vatsim_api::mock::MockServer;
 use vatsim_api::mock::state::MockState;
 
+/// Mock VATSIM API server for integration testing.
+#[derive(Debug, Parser)]
+#[command(
+    name = "vatsim-mock",
+    version,
+    about = "Mock VATSIM API server for integration testing",
+    long_about = None,
+)]
+struct Args {
+    /// Address to bind to.
+    #[arg(short, long, default_value = "127.0.0.1:8080")]
+    bind: String,
+
+    /// Path to a JSON seed file to preload the server state from.
+    ///
+    /// The file uses the `MockState` shape: an object whose keys are the entity
+    /// collections (`controllers`, `pilots`, `atis`, `servers`, `prefiles`,
+    /// `users`, ...). Every key is optional. The loaded state also becomes the
+    /// snapshot that `POST /api/reset` restores.
+    #[arg(short, long, value_name = "PATH")]
+    seed: Option<PathBuf>,
+
+    /// Log filter, in `RUST_LOG` syntax.
+    #[arg(long, default_value = "info", env = "RUST_LOG")]
+    log: String,
+}
+
 #[tokio::main]
-async fn main() {
-    let args: Vec<String> = env::args().skip(1).collect();
+async fn main() -> ExitCode {
+    let args = Args::parse();
 
-    let mut bind_addr = "127.0.0.1:8080".to_owned();
-    let mut seed_path: Option<String> = None;
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::new(&args.log))
+        .with_writer(std::io::stderr)
+        .init();
 
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--seed" => {
-                i += 1;
-                seed_path = Some(
-                    args.get(i)
-                        .unwrap_or_else(|| {
-                            eprintln!("Error: --seed requires a file path argument");
-                            process::exit(1);
-                        })
-                        .clone(),
-                );
-            }
-            "--bind" => {
-                i += 1;
-                bind_addr = args
-                    .get(i)
-                    .unwrap_or_else(|| {
-                        eprintln!("Error: --bind requires an address argument");
-                        process::exit(1);
-                    })
-                    .clone();
-            }
-            other => {
-                bind_addr = other.to_owned();
-            }
+    match run(args).await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            tracing::error!("{e}");
+            ExitCode::FAILURE
         }
-        i += 1;
     }
+}
 
+type BoxError = Box<dyn std::error::Error>;
+
+async fn run(args: Args) -> Result<(), BoxError> {
     let mut builder = MockServer::builder()
-        .bind(&bind_addr)
+        .bind(&args.bind)
         .security_headers(true);
 
-    if let Some(path) = &seed_path {
-        let data = fs::read_to_string(path).unwrap_or_else(|e| {
-            eprintln!("Error reading seed file {path}: {e}");
-            process::exit(1);
-        });
-        let state: MockState = serde_json::from_str(&data).unwrap_or_else(|e| {
-            eprintln!("Error parsing seed file {path}: {e}");
-            process::exit(1);
-        });
-        let entity_count =
+    if let Some(path) = &args.seed {
+        let data = std::fs::read_to_string(path)
+            .map_err(|e| format!("failed to read seed file {}: {e}", path.display()))?;
+        let state: MockState = serde_json::from_str(&data)
+            .map_err(|e| format!("failed to parse seed file {}: {e}", path.display()))?;
+
+        let entities =
             state.pilots.len() + state.controllers.len() + state.atis.len() + state.prefiles.len();
-        let user_count = state.users.len();
-        eprintln!("Loaded seed from {path} ({entity_count} entities, {user_count} users)");
+        tracing::info!(
+            seed = %path.display(),
+            entities,
+            users = state.users.len(),
+            "loaded seed file"
+        );
+
         builder = builder.state(state);
     }
 
-    let server = builder.build().await.unwrap_or_else(|e| {
-        eprintln!("Failed to bind to {bind_addr}: {e}");
-        process::exit(1);
-    });
+    let server = builder
+        .build()
+        .await
+        .map_err(|e| format!("failed to bind to {}: {e}", args.bind))?;
 
-    let addr = server.local_addr().unwrap_or_else(|e| {
-        eprintln!("Failed to get local address: {e}");
-        process::exit(1);
-    });
-    eprintln!("Listening on http://{addr}");
+    let addr = server.local_addr()?;
+    tracing::info!("listening on http://{addr}");
 
-    if let Err(e) = server.serve().await {
-        eprintln!("Server error: {e}");
-        process::exit(1);
+    server.serve_with_shutdown(shutdown_signal()).await?;
+    tracing::info!("shut down");
+
+    Ok(())
+}
+
+/// Resolves when the process receives Ctrl-C, or SIGTERM on Unix.
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl-C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        () = ctrl_c => {},
+        () = terminate => {},
     }
 }

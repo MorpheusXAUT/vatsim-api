@@ -25,7 +25,15 @@ mock = [
     "dep:tower-http",
     "dep:url",
 ]
-mock-bin = ["mock", "tokio/rt-multi-thread", "tokio/macros"]
+mock-bin = [
+    "mock",
+    "tracing",
+    "dep:clap",
+    "dep:tracing-subscriber",
+    "tokio/rt-multi-thread",
+    "tokio/macros",
+    "tokio/signal",
+]
 serde = ["chrono?/serde", "dep:serde"]
 tracing = ["axum?/tracing", "tower-http?/trace", "dep:tracing"]
 
@@ -38,6 +46,7 @@ thiserror = "2"
 
 axum = { version = "0.8", optional = true }
 chrono = { version = "0.4", optional = true }
+clap = { version = "4", features = ["derive", "env"], optional = true }
 reqwest = { version = "0.13", features = ["json", "query"], optional = true }
 rust-embed = { version = "8", optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
@@ -54,6 +63,9 @@ tower-http = { version = "0.6", features = [
     "set-header",
 ], optional = true }
 tracing = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.3", features = [
+    "env-filter",
+], optional = true }
 url = { version = "2", optional = true }
 
 [dev-dependencies]

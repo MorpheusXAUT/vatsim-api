@@ -46,18 +46,6 @@ jobs:
           command: release
         env:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
-          # TEMPORARY, remove once 0.1.0 is on crates.io.
-          #
-          # Trusted Publishing can only be configured on a crate that already
-          # exists, so the very first publish cannot use it. Rather than
-          # publishing 0.1.0 by hand and leaving the tag, the GitHub release
-          # and the signed artifacts to be assembled manually, this lets the
-          # real pipeline do it once with a short-lived, publish-new-scoped
-          # token.
-          #
-          # Revert this together with deleting the secret and the token, and
-          # `id-token: write` above takes over.
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
   release-plz-pr:
     name: Release-plz PR

@@ -8,6 +8,7 @@ use thiserror::Error;
 
 /// Errors from parsing VATSIM types or CSV data.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ParseError {
     /// An unrecognized string or integer value for a known type (e.g. facility,
     /// rating).
@@ -21,6 +22,7 @@ pub enum ParseError {
 /// Errors from [`VatsimClient`](crate::client::VatsimClient) operations.
 #[cfg(feature = "client")]
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ClientError {
     /// An HTTP-level failure (connection, timeout, non-success status code).
     #[error("HTTP error: {0}")]

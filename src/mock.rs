@@ -101,6 +101,21 @@ impl MockServer {
         axum::serve(self.listener, router).await
     }
 
+    /// Runs the server until `shutdown` resolves, then shuts down gracefully.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the server encounters a fatal I/O problem.
+    pub async fn serve_with_shutdown<F>(self, shutdown: F) -> std::io::Result<()>
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
+        let router = routes::router(self.state, self.security_headers);
+        axum::serve(self.listener, router)
+            .with_graceful_shutdown(shutdown)
+            .await
+    }
+
     /// Returns the socket address the server is bound to.
     ///
     /// # Errors

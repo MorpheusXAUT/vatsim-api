@@ -23,13 +23,16 @@ use super::state::SharedState;
 /// When `security_headers` is `true`, all responses include permissive CORS
 /// headers and standard security headers (`X-Content-Type-Options`,
 /// `X-Frame-Options`, `Referrer-Policy`).
-pub fn router(state: SharedState, security_headers: bool) -> Router {
+///
+/// Deliberately crate-private so that `axum` stays an implementation detail
+/// rather than part of this crate's semver contract. Callers go through
+/// [`MockServer`](super::MockServer).
+pub(crate) fn router(state: SharedState, security_headers: bool) -> Router {
     let router = Router::new()
         .merge(datafeed::routes())
         .merge(slurper::routes())
         .merge(connect::routes())
         .merge(api::routes());
-    // TODO wire in embedded frontend static file serving
 
     let router = if security_headers {
         router

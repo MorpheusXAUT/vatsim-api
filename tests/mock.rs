@@ -105,7 +105,10 @@ fn test_prefile(cid: u32, callsign: &str) -> Prefile {
 
 #[tokio::test]
 async fn spawn_empty_server() {
-    let handle = MockServer::builder().spawn().await;
+    let handle = MockServer::builder()
+        .spawn()
+        .await
+        .expect("failed to spawn mock server");
     let state = handle.state().read().await;
     assert!(state.pilots.is_empty());
     assert!(state.controllers.is_empty());
@@ -131,7 +134,8 @@ async fn builder_prepopulates_entities() {
         .servers(vec![server.clone()])
         .prefiles(vec![prefile.clone()])
         .spawn()
-        .await;
+        .await
+        .expect("failed to spawn mock server");
 
     let state = handle.state().read().await;
     assert_eq!(state.pilots.len(), 1);
@@ -153,7 +157,8 @@ async fn datafeed_returns_prepopulated_data() {
         .controllers(vec![test_controller(1_000_002, "LOWW_TWR")])
         .atis(vec![test_atis(1_000_003, "LOWW_ATIS")])
         .spawn()
-        .await;
+        .await
+        .expect("failed to spawn mock server");
 
     let resp = reqwest::get(format!("{}/v3/vatsim-data.json", handle.base_url()))
         .await
@@ -172,7 +177,10 @@ async fn datafeed_returns_prepopulated_data() {
 
 #[tokio::test]
 async fn datafeed_empty_server() {
-    let handle = MockServer::builder().spawn().await;
+    let handle = MockServer::builder()
+        .spawn()
+        .await
+        .expect("failed to spawn mock server");
 
     let feed: DataFeed = reqwest::get(format!("{}/v3/vatsim-data.json", handle.base_url()))
         .await
@@ -191,7 +199,8 @@ async fn slurper_returns_pilot_connection() {
     let handle = MockServer::builder()
         .pilots(vec![test_pilot(1_000_001, "AUA100")])
         .spawn()
-        .await;
+        .await
+        .expect("failed to spawn mock server");
 
     let resp = reqwest::get(format!("{}/users/info?cid=1000001", handle.base_url()))
         .await
@@ -210,7 +219,8 @@ async fn slurper_returns_controller_and_atis() {
         .controllers(vec![test_controller(1_000_001, "LOWW_TWR")])
         .atis(vec![test_atis(1_000_001, "LOWW_ATIS")])
         .spawn()
-        .await;
+        .await
+        .expect("failed to spawn mock server");
 
     let body = reqwest::get(format!("{}/users/info?cid=1000001", handle.base_url()))
         .await
@@ -228,7 +238,10 @@ async fn slurper_returns_controller_and_atis() {
 
 #[tokio::test]
 async fn slurper_unknown_cid_returns_empty() {
-    let handle = MockServer::builder().spawn().await;
+    let handle = MockServer::builder()
+        .spawn()
+        .await
+        .expect("failed to spawn mock server");
 
     let body = reqwest::get(format!("{}/users/info?cid=9999999", handle.base_url()))
         .await
@@ -242,7 +255,10 @@ async fn slurper_unknown_cid_returns_empty() {
 
 #[tokio::test]
 async fn api_pilot_crud() {
-    let handle = MockServer::builder().spawn().await;
+    let handle = MockServer::builder()
+        .spawn()
+        .await
+        .expect("failed to spawn mock server");
     let client = reqwest::Client::new();
     let base = handle.base_url();
 
@@ -329,7 +345,10 @@ async fn api_pilot_crud() {
 
 #[tokio::test]
 async fn api_atis_keyed_by_callsign() {
-    let handle = MockServer::builder().spawn().await;
+    let handle = MockServer::builder()
+        .spawn()
+        .await
+        .expect("failed to spawn mock server");
     let client = reqwest::Client::new();
     let base = handle.base_url();
 
@@ -393,7 +412,10 @@ async fn api_atis_keyed_by_callsign() {
 
 #[tokio::test]
 async fn api_server_keyed_by_ident() {
-    let handle = MockServer::builder().spawn().await;
+    let handle = MockServer::builder()
+        .spawn()
+        .await
+        .expect("failed to spawn mock server");
     let client = reqwest::Client::new();
     let base = handle.base_url();
 
@@ -436,7 +458,8 @@ async fn api_put_state_replaces_all_data() {
     let handle = MockServer::builder()
         .pilots(vec![test_pilot(1_000_001, "AUA100")])
         .spawn()
-        .await;
+        .await
+        .expect("failed to spawn mock server");
     let client = reqwest::Client::new();
     let base = handle.base_url();
 
@@ -479,7 +502,8 @@ async fn api_reset_restores_seed() {
     let handle = MockServer::builder()
         .pilots(vec![test_pilot(1_000_001, "AUA100")])
         .spawn()
-        .await;
+        .await
+        .expect("failed to spawn mock server");
     let client = reqwest::Client::new();
     let base = handle.base_url();
 
@@ -530,7 +554,8 @@ async fn api_put_state_preserves_seed() {
     let handle = MockServer::builder()
         .pilots(vec![test_pilot(1_000_001, "AUA100")])
         .spawn()
-        .await;
+        .await
+        .expect("failed to spawn mock server");
     let client = reqwest::Client::new();
     let base = handle.base_url();
 
@@ -575,7 +600,10 @@ async fn api_put_state_preserves_seed() {
 
 #[tokio::test]
 async fn api_reset_empty_server_clears_state() {
-    let handle = MockServer::builder().spawn().await;
+    let handle = MockServer::builder()
+        .spawn()
+        .await
+        .expect("failed to spawn mock server");
     let client = reqwest::Client::new();
     let base = handle.base_url();
 
@@ -625,7 +653,11 @@ async fn builder_seed_from_datafeed() {
         military_ratings: vec![],
     };
 
-    let handle = MockServer::builder().seed(feed).spawn().await;
+    let handle = MockServer::builder()
+        .seed(feed)
+        .spawn()
+        .await
+        .expect("failed to spawn mock server");
 
     let state = handle.state().read().await;
     assert_eq!(state.pilots.len(), 1);
@@ -639,7 +671,8 @@ async fn client_against_mock_server() {
         .pilots(vec![test_pilot(1_000_001, "AUA100")])
         .controllers(vec![test_controller(1_000_002, "LOWW_TWR")])
         .spawn()
-        .await;
+        .await
+        .expect("failed to spawn mock server");
 
     let client = handle.client();
     let feed = client.datafeed(CachePolicy::Refresh).await.unwrap();
@@ -656,7 +689,8 @@ async fn client_slurper_against_mock_server() {
         .pilots(vec![test_pilot(1_000_001, "AUA100")])
         .controllers(vec![test_controller(1_000_001, "LOWW_TWR")])
         .spawn()
-        .await;
+        .await
+        .expect("failed to spawn mock server");
 
     let client = handle.client();
     let connections = client
@@ -749,7 +783,8 @@ async fn oauth_full_flow() {
     let handle = MockServer::builder()
         .users(vec![user.clone()])
         .spawn()
-        .await;
+        .await
+        .expect("failed to spawn mock server");
     let base = handle.base_url();
     let http = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
@@ -832,7 +867,10 @@ async fn oauth_full_flow() {
 
 #[tokio::test]
 async fn oauth_authorize_no_users_returns_error() {
-    let handle = MockServer::builder().spawn().await;
+    let handle = MockServer::builder()
+        .spawn()
+        .await
+        .expect("failed to spawn mock server");
     let http = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()
@@ -858,7 +896,8 @@ async fn oauth_token_invalid_code_returns_error() {
     let handle = MockServer::builder()
         .users(vec![test_user(1_000_001, "Test", "User")])
         .spawn()
-        .await;
+        .await
+        .expect("failed to spawn mock server");
     let http = reqwest::Client::new();
 
     let resp = http
@@ -882,7 +921,8 @@ async fn oauth_user_no_token_returns_unauthorized() {
     let handle = MockServer::builder()
         .users(vec![test_user(1_000_001, "Test", "User")])
         .spawn()
-        .await;
+        .await
+        .expect("failed to spawn mock server");
     let http = reqwest::Client::new();
 
     let resp = http
@@ -900,7 +940,8 @@ async fn oauth_user_invalid_token_returns_unauthorized() {
     let handle = MockServer::builder()
         .users(vec![test_user(1_000_001, "Test", "User")])
         .spawn()
-        .await;
+        .await
+        .expect("failed to spawn mock server");
     let http = reqwest::Client::new();
 
     let resp = http
@@ -919,7 +960,8 @@ async fn oauth_code_cannot_be_reused() {
     let handle = MockServer::builder()
         .users(vec![test_user(1_000_001, "Test", "User")])
         .spawn()
-        .await;
+        .await
+        .expect("failed to spawn mock server");
     let base = handle.base_url();
     let http = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
@@ -984,7 +1026,8 @@ async fn oauth_login_hint_selects_user() {
     let handle = MockServer::builder()
         .users(vec![user_a, user_b])
         .spawn()
-        .await;
+        .await
+        .expect("failed to spawn mock server");
     let base = handle.base_url();
     let http = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
@@ -1051,7 +1094,8 @@ async fn oauth_login_hint_unknown_cid_returns_error() {
     let handle = MockServer::builder()
         .users(vec![test_user(1_000_001, "Test", "User")])
         .spawn()
-        .await;
+        .await
+        .expect("failed to spawn mock server");
     let http = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()
@@ -1076,7 +1120,10 @@ async fn oauth_login_hint_unknown_cid_returns_error() {
 #[tokio::test]
 async fn api_user_crud() {
     let user = test_user(1_000_001, "Test", "User");
-    let handle = MockServer::builder().spawn().await;
+    let handle = MockServer::builder()
+        .spawn()
+        .await
+        .expect("failed to spawn mock server");
     let base = handle.base_url();
     let http = reqwest::Client::new();
 
@@ -1136,7 +1183,8 @@ async fn reset_clears_oauth_tokens() {
     let handle = MockServer::builder()
         .users(vec![test_user(1_000_001, "Test", "User")])
         .spawn()
-        .await;
+        .await
+        .expect("failed to spawn mock server");
     let base = handle.base_url();
     let http = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())

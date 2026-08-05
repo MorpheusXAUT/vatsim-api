@@ -6,34 +6,35 @@
 //! # Quick start (tests)
 //!
 //! ```rust,no_run
-//! # async fn example() {
+//! # async fn example() -> std::io::Result<()> {
 //! use vatsim_api::mock::MockServer;
 //!
-//! let handle = MockServer::builder().spawn().await;
+//! let handle = MockServer::builder().spawn().await?;
 //! let client = handle.client();
 //!
 //! // Use `client` to hit the mock datafeed, slurper, etc.
 //! // The server shuts down when `handle` is dropped.
+//! # Ok(())
 //! # }
 //! ```
 //!
 //! # Quick start (standalone)
 //!
 //! ```rust,no_run
-//! # async fn example() {
+//! # async fn example() -> std::io::Result<()> {
 //! use vatsim_api::mock::MockServer;
 //!
 //! MockServer::builder()
 //!     .bind("0.0.0.0:8080")
 //!     .build()
-//!     .await
+//!     .await?
 //!     .serve()
-//!     .await
-//!     .unwrap();
+//!     .await?;
+//! # Ok(())
 //! # }
 //! ```
 
-pub mod routes;
+pub(crate) mod routes;
 pub mod state;
 
 use std::net::SocketAddr;
@@ -114,15 +115,11 @@ impl MockServer {
     /// The server shuts down gracefully when the handle is dropped or when
     /// [`MockServerHandle::shutdown`] is called.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if the listener's local address cannot be determined (should
-    /// not happen after a successful bind).
-    pub fn spawn(self) -> MockServerHandle {
-        let addr = self
-            .listener
-            .local_addr()
-            .expect("listener should have a local address");
+    /// Returns an error if the listener's local address cannot be determined.
+    pub fn spawn(self) -> std::io::Result<MockServerHandle> {
+        let addr = self.listener.local_addr()?;
         let base_url = format!("http://{addr}");
         let state = Arc::clone(&self.state);
 
@@ -138,12 +135,12 @@ impl MockServer {
                 .ok();
         });
 
-        MockServerHandle {
+        Ok(MockServerHandle {
             base_url,
             state,
             shutdown_tx,
             join_handle: Some(join_handle),
-        }
+        })
     }
 }
 
@@ -232,27 +229,30 @@ impl MockServerBuilder {
 
     /// Builds the [`MockServer`], binding to the configured address.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if the address cannot be bound.
-    pub async fn build(self) -> MockServer {
-        let listener = TcpListener::bind(&self.bind_addr)
-            .await
-            .unwrap_or_else(|e| panic!("failed to bind to {}: {e}", self.bind_addr));
+    /// Returns an error if the configured address cannot be bound.
+    pub async fn build(self) -> std::io::Result<MockServer> {
+        let listener = TcpListener::bind(&self.bind_addr).await?;
         let mut state = self.state;
         state.snapshot_seed();
-        MockServer {
+        Ok(MockServer {
             state: Arc::new(RwLock::new(state)),
             listener,
             security_headers: self.security_headers,
-        }
+        })
     }
 
     /// Convenience: builds and immediately spawns the server in the background.
     ///
-    /// Equivalent to `builder.build().await.spawn()`.
-    pub async fn spawn(self) -> MockServerHandle {
-        self.build().await.spawn()
+    /// Equivalent to `builder.build().await?.spawn()`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the configured address cannot be bound or the
+    /// listener's local address cannot be determined.
+    pub async fn spawn(self) -> std::io::Result<MockServerHandle> {
+        self.build().await?.spawn()
     }
 }
 

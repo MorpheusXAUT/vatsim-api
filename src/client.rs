@@ -6,8 +6,10 @@
 //! Datafeed responses are cached locally; use [`CachePolicy`] to control
 //! whether a call may return a cached copy or must refresh from the network.
 
-pub mod datafeed;
-pub mod slurper;
+// These only carry `impl VatsimClient` blocks, so they are private: the methods
+// land on `VatsimClient` itself and the module path is not part of the API.
+mod datafeed;
+mod slurper;
 
 use reqwest::Client;
 use serde::Deserialize;

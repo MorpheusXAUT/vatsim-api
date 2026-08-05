@@ -19,14 +19,19 @@ use crate::types::CertificateId;
 /// zero or more secondary-position lat/lon pairs appended.
 #[derive(Debug, Clone, PartialEq)]
 pub struct UserConnection {
+    /// The connected user's VATSIM certificate ID.
     pub cid: CertificateId,
+    /// Callsign the user is connected as.
     pub callsign: String,
+    /// Whether this is a pilot or an ATC connection.
     pub facility_type: SlurperFacilityType,
     /// MHz frequency string (e.g. `"121.900"`) - [`None`] for pilots.
     pub frequency: Option<String>,
     /// Visual range in nautical miles - [`None`] for pilots.
     pub visual_range: Option<u32>,
+    /// Latitude in decimal degrees.
     pub latitude: f64,
+    /// Longitude in decimal degrees.
     pub longitude: f64,
     /// Secondary positions as lat/lon pairs, if set by a controller.
     pub secondary_positions: Vec<(f64, f64)>,
@@ -35,8 +40,10 @@ pub struct UserConnection {
 /// The facility type reported by the slurper API for each connection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub enum SlurperFacilityType {
+    /// A pilot connection, reported as `pilot`.
     #[default]
     Pilot,
+    /// An ATC connection, reported as `atc`.
     Atc,
 }
 

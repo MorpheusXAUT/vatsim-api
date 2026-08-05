@@ -13,10 +13,20 @@ pub enum ParseError {
     /// An unrecognized string or integer value for a known type (e.g. facility,
     /// rating).
     #[error("unknown {kind}: {value}")]
-    UnknownValue { kind: &'static str, value: String },
+    UnknownValue {
+        /// The kind of value that failed to parse, e.g. `"facility"`.
+        kind: &'static str,
+        /// The unrecognized value, rendered as a string.
+        value: String,
+    },
     /// A malformed line in the slurper CSV response.
     #[error("invalid slurper CSV at line {line}: {reason}")]
-    InvalidSlurperCsv { line: usize, reason: String },
+    InvalidSlurperCsv {
+        /// One-based line number within the response body.
+        line: usize,
+        /// What made the line unparseable.
+        reason: String,
+    },
 }
 
 /// Errors from [`VatsimClient`](crate::client::VatsimClient) operations.

@@ -129,6 +129,7 @@
 #![warn(clippy::pedantic, missing_docs)]
 // VATSIM, OAuth2, CID and similar acronyms read fine in prose without backticks.
 #![allow(clippy::doc_markdown)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 // The crate-level docs link into the feature-gated `client` and `mock` modules.
 // docs.rs builds with all features so those links resolve there; in a
 // reduced-feature build the items genuinely do not exist, which is not a defect
@@ -142,15 +143,19 @@ pub mod error;
 pub mod types;
 
 #[cfg(feature = "client")]
+#[cfg_attr(docsrs, doc(cfg(feature = "client")))]
 pub mod client;
 
 #[cfg(feature = "mock")]
+#[cfg_attr(docsrs, doc(cfg(feature = "mock")))]
 pub mod mock;
 
 #[cfg(feature = "chrono")]
+#[cfg_attr(docsrs, doc(cfg(feature = "chrono")))]
 pub use chrono;
 
 #[cfg(feature = "client")]
+#[cfg_attr(docsrs, doc(cfg(feature = "client")))]
 pub use reqwest;
 
 pub use error::ParseError;

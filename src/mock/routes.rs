@@ -34,6 +34,9 @@ pub(crate) fn router(state: SharedState, security_headers: bool) -> Router {
         .merge(connect::routes())
         .merge(api::routes());
 
+    #[cfg(feature = "tracing")]
+    let router = router.layer(tower_http::trace::TraceLayer::new_for_http());
+
     let router = if security_headers {
         router
             .layer(CorsLayer::permissive())

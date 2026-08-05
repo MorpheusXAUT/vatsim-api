@@ -1254,3 +1254,84 @@ async fn reset_clears_oauth_tokens() {
 
     handle.shutdown().await;
 }
+
+/// The live VATSIM data feed reports facility and rating as numeric IDs, while
+/// this crate's enums serialize to their short string codes. The mock has to
+/// match the live API, or consumers parsing its JSON with anything other than
+/// this crate's types see a shape production never produces.
+#[tokio::test]
+async fn datafeed_renders_facility_and_rating_as_numeric_ids() {
+    let mut pilot = test_pilot(1_000_001, "AUA100");
+    pilot.pilot_rating = PilotRating::CommercialMultiEngineLicense;
+    pilot.military_rating = MilitaryRating::MilitaryInstrumentRating;
+
+    let handle = MockServer::builder()
+        .pilots(vec![pilot])
+        .controllers(vec![test_controller(1_000_002, "LOWW_TWR")])
+        .atis(vec![test_atis(1_000_003, "LOWW_ATIS")])
+        .spawn()
+        .await
+        .expect("failed to spawn mock server");
+
+    let raw: serde_json::Value = reqwest::get(format!("{}/v3/vatsim-data.json", handle.base_url()))
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    // Facility::Tower, ControllerRating::SeniorStudent
+    assert_eq!(raw["controllers"][0]["facility"], 4);
+    assert_eq!(raw["controllers"][0]["rating"], 4);
+
+    // Facility::Observer, ControllerRating::Observer
+    assert_eq!(raw["atis"][0]["facility"], 0);
+    assert_eq!(raw["atis"][0]["rating"], 1);
+
+    // Pilot ratings are a bit field, so these are 7 and 3 rather than 3 and 2.
+    assert_eq!(raw["pilots"][0]["pilot_rating"], 7);
+    assert_eq!(raw["pilots"][0]["military_rating"], 3);
+
+    // Deserialization accepts the numeric form, so the typed round trip still
+    // yields the enums it started with.
+    let feed: DataFeed = serde_json::from_value(raw).unwrap();
+    assert_eq!(feed.controllers[0].facility, Facility::Tower);
+    assert_eq!(feed.controllers[0].rating, ControllerRating::SeniorStudent);
+    assert_eq!(
+        feed.pilots[0].pilot_rating,
+        PilotRating::CommercialMultiEngineLicense
+    );
+}
+
+/// The four facility types the data feed has no ID for collapse onto their
+/// closest equivalent, so the mock never emits a facility a real parser would
+/// reject.
+#[tokio::test]
+async fn datafeed_maps_facilities_without_an_id_onto_their_closest_equivalent() {
+    let mut ramp = test_controller(1_000_001, "LOWW_RMP");
+    ramp.facility = Facility::Ramp;
+    let mut departure = test_controller(1_000_002, "LOWW_DEP");
+    departure.facility = Facility::Departure;
+    let mut radio = test_controller(1_000_003, "LOWW_RDO");
+    radio.facility = Facility::Radio;
+    let mut flow = test_controller(1_000_004, "LOWW_FMP");
+    flow.facility = Facility::TrafficFlow;
+
+    let handle = MockServer::builder()
+        .controllers(vec![ramp, departure, radio, flow])
+        .spawn()
+        .await
+        .expect("failed to spawn mock server");
+
+    let raw: serde_json::Value = reqwest::get(format!("{}/v3/vatsim-data.json", handle.base_url()))
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    assert_eq!(raw["controllers"][0]["facility"], 3); // Ramp -> Ground
+    assert_eq!(raw["controllers"][1]["facility"], 5); // Departure -> Approach
+    assert_eq!(raw["controllers"][2]["facility"], 1); // Radio -> FlightServiceStation
+    assert_eq!(raw["controllers"][3]["facility"], 0); // TrafficFlow -> Observer
+}

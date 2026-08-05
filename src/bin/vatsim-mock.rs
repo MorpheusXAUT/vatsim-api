@@ -63,7 +63,10 @@ async fn main() {
         builder = builder.state(state);
     }
 
-    let server = builder.build().await;
+    let server = builder.build().await.unwrap_or_else(|e| {
+        eprintln!("Failed to bind to {bind_addr}: {e}");
+        process::exit(1);
+    });
 
     let addr = server.local_addr().unwrap_or_else(|e| {
         eprintln!("Failed to get local address: {e}");

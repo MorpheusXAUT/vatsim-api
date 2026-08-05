@@ -19,7 +19,13 @@ use crate::types::datafeed::{
 /// [data feed](https://vatsim.dev/api/data-api/get-network-data) response.
 /// The state is wrapped in an [`Arc<RwLock<_>>`] so that route handlers and
 /// test code can read and mutate it concurrently.
+///
+/// Every collection defaults to empty, so a seed file only needs to list the
+/// entities it actually cares about. This is deliberate: `MockState`'s serde
+/// shape is the on-disk seed-file format, and requiring a field would break
+/// every existing seed file.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct MockState {
     pub pilots: Vec<Pilot>,
     pub controllers: Vec<Controller>,
@@ -31,7 +37,7 @@ pub struct MockState {
     pub pilot_ratings: Vec<PilotRatingInfo>,
     pub military_ratings: Vec<MilitaryRatingInfo>,
     /// Connect users available for OAuth authentication.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub users: Vec<ConnectUser>,
     /// Pending authorization codes mapped to the CID they authenticate.
     /// Populated by `GET /oauth/authorize`, consumed by `POST /oauth/token`.

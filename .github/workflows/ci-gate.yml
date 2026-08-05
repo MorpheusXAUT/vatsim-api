@@ -1,0 +1,96 @@
+name: CI
+
+# No `paths:` filter, deliberately. A required status check that a path filter
+# skips never reports at all, and GitHub blocks the pull request waiting for it
+# forever. Instead this always runs, works out what actually changed, and the
+# gate job below reports a single status for the whole pipeline.
+#
+# `CI \u2713` is the only check worth marking required.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Detect changed paths
+        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        id: filter
+        with:
+          filters: |
+            rust:
+              - "**/*.rs"
+              - "**/Cargo.toml"
+              - "**/Cargo.lock"
+              - "**/deny.toml"
+              - ".github/workflows/**"
+
+  rust:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    uses: ./.github/workflows/ci-rust.yml
+    permissions:
+      contents: read
+
+  gate:
+    name: "CI \u2713"
+    needs: [rust]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: {}
+    steps:
+      - name: Evaluate results
+        env:
+          RUST_RESULT: ${{ needs.rust.result }}
+        run: |
+          failed=false
+          for name in rust; do
+            var="${name^^}_RESULT"
+            result="${!var}"
+            case "$result" in
+              success|skipped) echo "$name: $result" ;;
+              *)               echo "::error::$name: $result"; failed=true ;;
+            esac
+          done
+
+          if [[ "$failed" == "true" ]]; then
+            echo ""
+            echo "One or more required CI workflows failed."
+            exit 1
+          fi
+
+          echo ""
+          echo "All required checks passed or were skipped."
+
+      - name: Summary
+        if: always()
+        env:
+          RUST_RESULT: ${{ needs.rust.result }}
+        run: |
+          icon() { case "$1" in success) echo "✅";; skipped) echo "⏭️";; *) echo "❌";; esac }
+
+          echo "### CI Gate" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Workflow | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Rust | $(icon "$RUST_RESULT") $RUST_RESULT |" >> $GITHUB_STEP_SUMMARY

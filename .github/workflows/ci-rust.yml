@@ -1,0 +1,281 @@
+name: CI Rust
+
+# Called by ci-gate.yml, which decides whether this needs to run at all.
+# Deliberately has no `paths:` filter of its own: a required check that is
+# skipped by a path filter never reports, and blocks the pull request forever.
+on:
+  workflow_call:
+
+permissions: {}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  cargo-deny:
+    name: cargo deny (${{ matrix.checks }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    strategy:
+      matrix:
+        checks:
+          - "advisories"
+          - "bans licenses sources"
+
+    # A newly published advisory should not fail CI on an unrelated change.
+    continue-on-error: ${{ matrix.checks == 'advisories' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: cargo deny
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          arguments: --all-features
+          command: check ${{ matrix.checks }}
+
+  check:
+    name: check (${{ matrix.os }}, ${{ matrix.rust }})
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        rust: ["1.85.0", "stable"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Rust toolchain (${{ matrix.rust }})
+        run: |
+          rustup toolchain install ${{ matrix.rust }} --profile minimal --no-self-update --component clippy,rust-docs,rustfmt
+          rustup default ${{ matrix.rust }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          key: ${{ matrix.rust }}
+
+      # Lints and docs run on stable only: rustfmt and clippy change between
+      # releases, so demanding both toolchains satisfy them at once means
+      # writing to whichever standard is stricter for no benefit.
+      #
+      # They do run on every OS, because clippy and rustdoc only see code that
+      # is compiled. A #[cfg]-gated branch for another platform is invisible to
+      # them, so a single-OS leg silently stops covering platform-specific code
+      # the moment any is added.
+      - name: Clippy (all features)
+        if: matrix.rust == 'stable'
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+
+      # The types layer has to build with serde and chrono switched off, and
+      # the timestamp fields change type when it does.
+      - name: Clippy (no default features)
+        if: matrix.rust == 'stable'
+        run: cargo clippy --locked --no-default-features -- -D warnings
+
+      - name: Docs (all features)
+        if: matrix.rust == 'stable'
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: cargo doc --locked --all-features --no-deps
+
+      - name: Docs (no default features)
+        if: matrix.rust == 'stable'
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: cargo doc --locked --no-default-features --no-deps
+
+      # Formatting is the one check that genuinely cannot differ per platform:
+      # rustfmt works on the parsed AST without evaluating cfg, so it formats
+      # every branch on every OS. One leg is provably enough.
+      - name: Format
+        if: matrix.os == 'ubuntu-latest' && matrix.rust == 'stable'
+        run: cargo fmt --all -- --check
+
+      # The MSRV promise covers building this crate, not running its test
+      # suite: `--all-targets` pulls in dev-dependencies, and wiremock needs a
+      # newer compiler than we ask consumers for. Checking lib and bins keeps
+      # the promise honest without letting a test-only dependency dictate it.
+      - name: Check (MSRV)
+        if: matrix.rust != 'stable'
+        run: cargo check --locked --all-features
+
+      - name: Tests
+        if: matrix.rust == 'stable'
+        run: cargo test --locked --all-targets --all-features
+
+      # `--all-targets` skips doctests, and the crate-level examples are the
+      # documentation consumers actually read.
+      - name: Doctests
+        if: matrix.rust == 'stable'
+        run: cargo test --locked --all-features --doc
+
+  features:
+    name: feature powerset
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Rust toolchain
+        run: rustup toolchain install stable --profile minimal --no-self-update
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
+      - name: Install cargo-hack
+        run: cargo install --locked cargo-hack
+
+      # Catches combinations the two clippy legs miss, such as `client` without
+      # `chrono`, where the timestamp fields change type underneath the client.
+      - name: Check feature powerset
+        run: cargo hack check --locked --feature-powerset --depth 2
+
+  machete:
+    name: unused dependencies
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Rust toolchain
+        run: rustup toolchain install stable --profile minimal --no-self-update
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
+      - name: Install cargo-machete
+        run: cargo install --locked cargo-machete
+
+      - name: cargo machete
+        run: cargo machete
+
+  package:
+    name: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Rust toolchain
+        run: rustup toolchain install stable --profile minimal --no-self-update
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
+      # `include` in Cargo.toml is an allowlist, so a newly added file does not
+      # ship unless it is listed. Print the manifest so a reviewer can see what
+      # a release would actually contain.
+      - name: List package contents
+        run: cargo package --locked --list
+
+      - name: Dry-run publish
+        run: cargo publish --locked --dry-run
+
+  api-compat:
+    name: API compatibility
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup toolchain install nightly --profile minimal --no-self-update --component rust-docs-json
+          rustup default stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
+      # Both tools diff against the latest release on crates.io, so there is
+      # nothing to compare against until the first publish. Detecting that
+      # here means the job self-heals once 0.1.0 lands, rather than sitting
+      # red behind a continue-on-error nobody remembers to remove.
+      - name: Check whether the crate is published
+        id: published
+        run: |
+          set -euo pipefail
+          name=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].name')
+          http_code=$(curl -sS -o /dev/null -w '%{http_code}' \
+            -H 'User-Agent: vatsim-api-ci' \
+            "https://crates.io/api/v1/crates/${name}")
+          if [ "$http_code" = "200" ]; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::${name} is not on crates.io yet (HTTP ${http_code}); skipping the API compatibility diff."
+          fi
+
+      - name: Install cargo-public-api and cargo-semver-checks
+        if: steps.published.outputs.published == 'true'
+        run: cargo install --locked cargo-public-api cargo-semver-checks
+
+      # Catches public API changes that no compiler error reports, including
+      # ones caused purely by a dependency bump changing a re-exported type.
+      - name: Public API diff
+        if: steps.published.outputs.published == 'true'
+        run: cargo public-api --all-features diff latest
+
+      - name: Semver check
+        if: steps.published.outputs.published == 'true'
+        run: cargo semver-checks check-release --all-features
+
+  workflows:
+    name: workflow lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Rust toolchain
+        run: rustup toolchain install stable --profile minimal --no-self-update
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
+      - name: Install zizmor
+        run: cargo install --locked zizmor
+
+      # Catches template injection, over-broad permissions, unpinned actions
+      # and credential persistence in the workflows themselves.
+      - name: zizmor
+        run: zizmor .github/workflows/

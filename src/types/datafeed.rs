@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 
 /// Top-level response from the [VATSIM data feed](https://vatsim.dev/api/data-api/get-network-data).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct DataFeed {
     pub general: GeneralInfo,
@@ -29,7 +29,7 @@ pub struct DataFeed {
 }
 
 /// General metadata about the current data feed snapshot.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct GeneralInfo {
     pub version: u32,
@@ -45,7 +45,7 @@ pub struct GeneralInfo {
 }
 
 /// A pilot currently connected to the VATSIM network.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Pilot {
     pub cid: CertificateId,
@@ -80,7 +80,7 @@ pub struct Pilot {
 }
 
 /// An ATC controller currently connected to the VATSIM network.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Controller {
     pub cid: CertificateId,
@@ -106,7 +106,7 @@ pub struct Controller {
 }
 
 /// An ATIS station currently broadcasting on the VATSIM network.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Atis {
     pub cid: CertificateId,
@@ -132,7 +132,7 @@ pub struct Atis {
 }
 
 /// A VATSIM FSD server.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Server {
     pub ident: String,
@@ -146,7 +146,7 @@ pub struct Server {
 }
 
 /// A prefiled flight plan not yet associated with an active connection
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Prefile {
     pub cid: CertificateId,
@@ -160,7 +160,7 @@ pub struct Prefile {
 }
 
 /// A filed flight plan.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FlightPlan {
     pub flight_rules: FlightRules,
@@ -186,11 +186,12 @@ pub struct FlightPlan {
 }
 
 /// ICAO flight rules for a filed flight plan.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum FlightRules {
     #[cfg_attr(feature = "serde", serde(rename = "I"))]
     /// Instrument flight rules.
+    #[default]
     IFR,
     #[cfg_attr(feature = "serde", serde(rename = "V"))]
     /// Visual flight rules.
@@ -204,7 +205,7 @@ pub enum FlightRules {
 }
 
 /// Human-readable metadata for a facility type, as returned in the datafeed
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FacilityInfo {
     pub id: i8,
@@ -213,7 +214,7 @@ pub struct FacilityInfo {
 }
 
 /// Human-readable metadata for a controller rating, as returned in the datafeed
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct RatingInfo {
     pub id: i8,
@@ -222,7 +223,7 @@ pub struct RatingInfo {
 }
 
 /// Human-readable metadata for a pilot rating, as returned in the datafeed
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PilotRatingInfo {
     pub id: i8,
@@ -231,7 +232,7 @@ pub struct PilotRatingInfo {
 }
 
 /// Human-readable metadata for a military rating, as returned in the datafeed
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MilitaryRatingInfo {
     pub id: i8,

@@ -168,6 +168,32 @@ impl Facility {
         Self::TrafficFlow,
     ];
 
+    /// Returns the numeric ID the VATSIM data feed uses for this facility.
+    ///
+    /// The data feed has IDs for only seven facility types, so the four
+    /// variants without one map to their closest equivalent:
+    /// [`Departure`](Self::Departure) to [`Approach`](Self::Approach),
+    /// [`Ramp`](Self::Ramp) to [`Ground`](Self::Ground),
+    /// [`Radio`](Self::Radio) to
+    /// [`FlightServiceStation`](Self::FlightServiceStation), and
+    /// [`TrafficFlow`](Self::TrafficFlow) to [`Observer`](Self::Observer).
+    /// Those four therefore do not survive a round trip through an ID.
+    ///
+    /// [`as_str`](Self::as_str) is lossless and is what this crate's
+    /// [`Serialize`] implementation uses.
+    #[must_use]
+    pub const fn as_id(self) -> i8 {
+        match self {
+            Facility::Observer | Facility::TrafficFlow => 0,
+            Facility::FlightServiceStation | Facility::Radio => 1,
+            Facility::ClearanceDelivery => 2,
+            Facility::Ground | Facility::Ramp => 3,
+            Facility::Tower => 4,
+            Facility::Approach | Facility::Departure => 5,
+            Facility::Enroute => 6,
+        }
+    }
+
     /// Returns the short string code for this facility (e.g. `"TWR"`, `"APP"`).
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -513,6 +539,23 @@ impl PilotRating {
         Self::FlightExaminer,
     ];
 
+    /// Returns the numeric ID the VATSIM data feed uses for this rating.
+    ///
+    /// Pilot rating IDs are a bit field, so they run 0, 1, 3, 7, 15, 31, 63
+    /// rather than consecutively.
+    #[must_use]
+    pub const fn as_id(self) -> i8 {
+        match self {
+            PilotRating::BasicMember => 0,
+            PilotRating::PrivatePilotLicense => 1,
+            PilotRating::InstrumentRating => 3,
+            PilotRating::CommercialMultiEngineLicense => 7,
+            PilotRating::AirlineTransportPilotLicense => 15,
+            PilotRating::FlightInstructor => 31,
+            PilotRating::FlightExaminer => 63,
+        }
+    }
+
     /// Returns the short string code for this rating (e.g. `"PPL"`, `"ATPL"`).
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -643,6 +686,21 @@ impl MilitaryRating {
         Self::MilitaryMultiEngineRating,
         Self::MilitaryMissionReadyPilot,
     ];
+
+    /// Returns the numeric ID the VATSIM data feed uses for this rating.
+    ///
+    /// Military rating IDs are a bit field, so they run 0, 1, 3, 7, 15 rather
+    /// than consecutively.
+    #[must_use]
+    pub const fn as_id(self) -> i8 {
+        match self {
+            MilitaryRating::NoMilitaryRating => 0,
+            MilitaryRating::MilitaryPilotLicense => 1,
+            MilitaryRating::MilitaryInstrumentRating => 3,
+            MilitaryRating::MilitaryMultiEngineRating => 7,
+            MilitaryRating::MilitaryMissionReadyPilot => 15,
+        }
+    }
 
     /// Returns the short string code for this rating (e.g. `"M0"`, `"M4"`).
     #[must_use]

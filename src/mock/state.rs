@@ -27,14 +27,23 @@ use crate::types::datafeed::{
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MockState {
+    /// Pilots reported by the data feed and slurper.
     pub pilots: Vec<Pilot>,
+    /// Controllers reported by the data feed and slurper.
     pub controllers: Vec<Controller>,
+    /// ATIS stations reported by the data feed and slurper.
     pub atis: Vec<Atis>,
+    /// FSD servers reported by the data feed.
     pub servers: Vec<Server>,
+    /// Prefiled flight plans reported by the data feed.
     pub prefiles: Vec<Prefile>,
+    /// Facility lookup table embedded in the data feed response.
     pub facilities: Vec<FacilityInfo>,
+    /// Controller rating lookup table embedded in the data feed response.
     pub ratings: Vec<RatingInfo>,
+    /// Pilot rating lookup table embedded in the data feed response.
     pub pilot_ratings: Vec<PilotRatingInfo>,
+    /// Military rating lookup table embedded in the data feed response.
     pub military_ratings: Vec<MilitaryRatingInfo>,
     /// Connect users available for OAuth authentication.
     #[serde(skip_serializing_if = "Vec::is_empty")]

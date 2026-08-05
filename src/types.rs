@@ -22,63 +22,102 @@ pub struct CertificateId(u32);
 /// ATC facility type as used in the VATSIM data feed and callsign suffixes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub enum Facility {
+    /// Observer, `OBS`, data feed ID 0. Also the fallback for unrecognized
+    /// callsign suffixes.
     #[default]
     Observer,
+    /// Ramp control, `RMP`. Has no data feed ID.
     Ramp,
+    /// Clearance delivery, `DEL`, data feed ID 2.
     ClearanceDelivery,
+    /// Ground, `GND`, data feed ID 3.
     Ground,
+    /// Tower, `TWR`, data feed ID 4.
     Tower,
+    /// Approach, `APP`, data feed ID 5. The data feed does not distinguish
+    /// approach from departure, so an ID of 5 always maps here.
     Approach,
+    /// Departure, `DEP`. Has no data feed ID; see [`Facility::Approach`].
     Departure,
+    /// Enroute (area control center), `CTR`, data feed ID 6.
     Enroute,
+    /// Flight service station, `FSS`, data feed ID 1.
     FlightServiceStation,
+    /// Radio, `RDO`. Has no data feed ID.
     Radio,
+    /// Traffic flow or traffic management, `FMP`. Has no data feed ID.
     TrafficFlow,
 }
 
 /// VATSIM ATC controller rating, from inactive/suspended through administrator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub enum ControllerRating {
+    /// Inactive, `INAC`, ID -1.
     #[default]
     Inactive,
+    /// Suspended, `SUS`, ID 0.
     Suspended,
+    /// Observer, `OBS`, ID 1.
     Observer,
+    /// Tower trainee, `S1`, ID 2.
     TowerTrainee,
+    /// Tower controller, `S2`, ID 3.
     TowerController,
+    /// Senior student, `S3`, ID 4.
     SeniorStudent,
+    /// Enroute controller, `C1`, ID 5.
     EnrouteController,
+    /// Controller 2, `C2`, ID 6.
     #[deprecated(note = "not actively in use on VATSIM")]
     Controller2,
+    /// Senior controller, `C3`, ID 7.
     SeniorController,
+    /// Instructor, `I1`, ID 8.
     Instructor,
+    /// Instructor 2, `I2`, ID 9.
     #[deprecated(note = "not actively in use on VATSIM")]
     Instructor2,
+    /// Senior instructor, `I3`, ID 10.
     SeniorInstructor,
+    /// Supervisor, `SUP`, ID 11.
     Supervisor,
+    /// Administrator, `ADM`, ID 12.
     Administrator,
 }
 
 /// VATSIM pilot rating, from basic member through flight examiner.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub enum PilotRating {
+    /// Basic member, `NEW`, ID 0.
     #[default]
     BasicMember,
+    /// Private pilot license, `PPL`, ID 1.
     PrivatePilotLicense,
+    /// Instrument rating, `IR`, ID 3.
     InstrumentRating,
+    /// Commercial multi-engine license, `CMEL`, ID 7.
     CommercialMultiEngineLicense,
+    /// Airline transport pilot license, `ATPL`, ID 15.
     AirlineTransportPilotLicense,
+    /// Flight instructor, `FI`, ID 31.
     FlightInstructor,
+    /// Flight examiner, `FE`, ID 63.
     FlightExaminer,
 }
 
 /// VATSIM military pilot rating.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub enum MilitaryRating {
+    /// No military rating, `M0`, ID 0.
     #[default]
     NoMilitaryRating,
+    /// Military pilot license, `M1`, ID 1.
     MilitaryPilotLicense,
+    /// Military instrument rating, `M2`, ID 3.
     MilitaryInstrumentRating,
+    /// Military multi-engine rating, `M3`, ID 7.
     MilitaryMultiEngineRating,
+    /// Military mission ready pilot, `M4`, ID 15.
     MilitaryMissionReadyPilot,
 }
 

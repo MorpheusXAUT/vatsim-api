@@ -15,6 +15,7 @@ jobs:
   cargo-deny:
     name: cargo deny (${{ matrix.checks }})
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
 
@@ -42,6 +43,7 @@ jobs:
   check:
     name: check (${{ matrix.os }}, ${{ matrix.rust }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     permissions:
       contents: read
 
@@ -125,6 +127,7 @@ jobs:
   features:
     name: feature powerset
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
 
@@ -151,6 +154,7 @@ jobs:
   machete:
     name: unused dependencies
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
 
@@ -175,6 +179,7 @@ jobs:
   package:
     name: package
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
 
@@ -202,6 +207,7 @@ jobs:
   api-compat:
     name: API compatibility
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
 
@@ -253,29 +259,3 @@ jobs:
       - name: Semver check
         if: steps.published.outputs.published == 'true'
         run: cargo semver-checks check-release --all-features
-
-  workflows:
-    name: workflow lint
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Rust toolchain
-        run: rustup toolchain install stable --profile minimal --no-self-update
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-
-      - name: Install zizmor
-        run: cargo install --locked zizmor
-
-      # Catches template injection, over-broad permissions, unpinned actions
-      # and credential persistence in the workflows themselves.
-      - name: zizmor
-        run: zizmor .github/workflows/

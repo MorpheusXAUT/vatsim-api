@@ -10,6 +10,11 @@ on:
 
 permissions: {}
 
+# Two pushes to main must not race on the same release or release PR.
+concurrency:
+  group: release-plz-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release-plz-release:
     name: Release-plz release
@@ -52,11 +57,10 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ github.repository_owner == 'MorpheusXAUT' }}
     permissions:
+      # release-plz pushes the release branch and opens or updates the release
+      # PR with the App token below; these mirror that token's scopes.
       pull-requests: write
       contents: write
-    concurrency:
-      group: release-plz-${{ github.ref }}
-      cancel-in-progress: false
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

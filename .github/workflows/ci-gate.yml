@@ -47,7 +47,7 @@ jobs:
   rust:
     needs: changes
     if: needs.changes.outputs.rust == 'true'
-    uses: ./.github/workflows/ci-rust.yml
+    uses: $/.github/workflows/ci-rust.yml
     permissions:
       contents: read
 

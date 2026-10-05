@@ -224,7 +224,7 @@ mod tests {
         assert_eq!(conn.facility_type, SlurperFacilityType::Pilot);
         assert_eq!(conn.frequency, None);
         assert_eq!(conn.visual_range, None);
-        assert!(conn.secondary_positions.is_empty());
+        assert_eq!(conn.secondary_positions, [] as [(f64, f64); 0]);
     }
 
     #[test]
@@ -235,7 +235,7 @@ mod tests {
         assert_eq!(conn.facility_type, SlurperFacilityType::Atc);
         assert_eq!(conn.frequency.as_deref(), Some("119.400"));
         assert_eq!(conn.visual_range, Some(50));
-        assert!(conn.secondary_positions.is_empty());
+        assert_eq!(conn.secondary_positions, [] as [(f64, f64); 0]);
     }
 
     #[test]
@@ -343,7 +343,7 @@ mod tests {
     fn parse_many_zero_padded_secondary_positions() {
         let line = "1234567,LOVV_CTR,atc,123.450,600,47.66667,14.33333,0,0,0,0,0,0,0,0,";
         let conn: UserConnection = line.parse().unwrap();
-        assert!(conn.secondary_positions.is_empty());
+        assert_eq!(conn.secondary_positions, [] as [(f64, f64); 0]);
     }
 
     #[test]
@@ -351,7 +351,7 @@ mod tests {
         let line = "1234567,AUA456,pilot,,,48.11028,16.56972,0,0,0,0,,,,";
         let conn: UserConnection = line.parse().unwrap();
         assert_eq!(conn.callsign, "AUA456");
-        assert!(conn.secondary_positions.is_empty());
+        assert_eq!(conn.secondary_positions, [] as [(f64, f64); 0]);
     }
 
     #[test]
@@ -374,7 +374,7 @@ mod tests {
     fn parse_odd_trailing_field_ignored() {
         let line = "1234567,LOWW_TWR,atc,119.400,50,48.11028,16.56972,42.0,";
         let conn: UserConnection = line.parse().unwrap();
-        assert!(conn.secondary_positions.is_empty());
+        assert_eq!(conn.secondary_positions, [] as [(f64, f64); 0]);
     }
 
     #[test]
